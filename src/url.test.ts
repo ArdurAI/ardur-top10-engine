@@ -36,10 +36,7 @@ test('safePublicUrl: passes clean https URL unchanged', () => {
 });
 
 test('safePublicUrl: strips fragment only', () => {
-  assert.equal(
-    safePublicUrl('https://reuters.com/article#section'),
-    'https://reuters.com/article',
-  );
+  assert.equal(safePublicUrl('https://reuters.com/article#section'), 'https://reuters.com/article');
 });
 
 test('safePublicUrl: strips tracking params, keeps non-tracking', () => {

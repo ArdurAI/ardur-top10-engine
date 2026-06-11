@@ -174,38 +174,26 @@ test('references are populated when aggregation is provided, else warned + empty
 test('selectTop10 throws a clear error on wrong schemaVersion', () => {
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking, schemaVersion: 'ardur-content-pipeline/v0' };
-  assert.throws(
-    () => selectTop10(bad as unknown as typeof ranking, null),
-    /schema mismatch/,
-  );
+  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /schema mismatch/);
 });
 
 test('selectTop10 throws when schemaVersion is missing entirely', () => {
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking } as Record<string, unknown>;
   delete bad['schemaVersion'];
-  assert.throws(
-    () => selectTop10(bad as unknown as typeof ranking, null),
-    /schema mismatch/,
-  );
+  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /schema mismatch/);
 });
 
 test('selectTop10 throws on wrong artifact type', () => {
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking, artifact: 'aggregation' };
-  assert.throws(
-    () => selectTop10(bad as unknown as typeof ranking, null),
-    /malformed/,
-  );
+  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /malformed/);
 });
 
 test('selectTop10 throws when data.rankedByTopic is missing', () => {
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking, data: { ...ranking.data, rankedByTopic: null } };
-  assert.throws(
-    () => selectTop10(bad as unknown as typeof ranking, null),
-    /malformed/,
-  );
+  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /malformed/);
 });
 
 // ── Issue #9: unionByCluster stable tie-break across topic key order ───────────
@@ -217,8 +205,12 @@ test('unionByCluster: global board is byte-identical regardless of topic key ins
   const makeC = (topic: string) =>
     makeCluster({ clusterId: 'dup', topic, topicLabel: topic, score: makeScore(5) });
 
-  const ab = selectTop10(makeRanking({ alpha: [makeC('alpha')], beta: [makeC('beta')] }), null, { size: 10 });
-  const ba = selectTop10(makeRanking({ beta: [makeC('beta')], alpha: [makeC('alpha')] }), null, { size: 10 });
+  const ab = selectTop10(makeRanking({ alpha: [makeC('alpha')], beta: [makeC('beta')] }), null, {
+    size: 10,
+  });
+  const ba = selectTop10(makeRanking({ beta: [makeC('beta')], alpha: [makeC('alpha')] }), null, {
+    size: 10,
+  });
 
   assert.equal(ab.data.global.length, 1);
   assert.equal(ba.data.global.length, 1);
@@ -229,8 +221,18 @@ test('unionByCluster: global board is byte-identical regardless of topic key ins
 
 test('unionByCluster: non-tied clusters are still resolved by compareClusters', () => {
   // Cluster "dup" in beta has a higher score — beta's copy should win regardless.
-  const weak = makeCluster({ clusterId: 'dup', topic: 'alpha', topicLabel: 'Alpha', score: makeScore(3) });
-  const strong = makeCluster({ clusterId: 'dup', topic: 'beta', topicLabel: 'Beta', score: makeScore(7) });
+  const weak = makeCluster({
+    clusterId: 'dup',
+    topic: 'alpha',
+    topicLabel: 'Alpha',
+    score: makeScore(3),
+  });
+  const strong = makeCluster({
+    clusterId: 'dup',
+    topic: 'beta',
+    topicLabel: 'Beta',
+    score: makeScore(7),
+  });
 
   const ab = selectTop10(makeRanking({ alpha: [weak], beta: [strong] }), null, { size: 10 });
   const ba = selectTop10(makeRanking({ beta: [strong], alpha: [weak] }), null, { size: 10 });

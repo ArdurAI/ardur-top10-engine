@@ -20,23 +20,31 @@ import type { RankingArtifact, Top10Artifact, AggregationArtifact } from './cont
 function readJson(path: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`${path}: expected a JSON object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`);
+    throw new Error(
+      `${path}: expected a JSON object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`,
+    );
   }
   return parsed as Record<string, unknown>;
 }
 
-function validateEnvelope(obj: Record<string, unknown>, expectedArtifact: string, filePath: string): void {
+function validateEnvelope(
+  obj: Record<string, unknown>,
+  expectedArtifact: string,
+  filePath: string,
+): void {
   if (!('schemaVersion' in obj)) {
-    throw new Error(`${filePath}: missing required field "schemaVersion" — is this an Ardur pipeline artifact?`);
+    throw new Error(
+      `${filePath}: missing required field "schemaVersion" — is this an Ardur pipeline artifact?`,
+    );
   }
   if (obj['schemaVersion'] !== SCHEMA_VERSION) {
     throw new Error(
-      `${filePath}: schema mismatch: expected "${SCHEMA_VERSION}", got "${obj['schemaVersion']}"`
+      `${filePath}: schema mismatch: expected "${SCHEMA_VERSION}", got "${obj['schemaVersion']}"`,
     );
   }
   if (obj['artifact'] !== expectedArtifact) {
     throw new Error(
-      `${filePath}: artifact type mismatch: expected "${expectedArtifact}", got "${obj['artifact']}"`
+      `${filePath}: artifact type mismatch: expected "${expectedArtifact}", got "${obj['artifact']}"`,
     );
   }
   if (typeof obj['data'] !== 'object' || obj['data'] === null) {

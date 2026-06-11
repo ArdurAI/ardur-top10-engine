@@ -234,7 +234,7 @@ export function selectTop10(
   const raw = ranking as unknown as Record<string, unknown>;
   if (raw['schemaVersion'] !== SCHEMA_VERSION) {
     throw new Error(
-      `ranking artifact schema mismatch: expected "${SCHEMA_VERSION}", got "${raw['schemaVersion'] ?? '(missing)'}"`
+      `ranking artifact schema mismatch: expected "${SCHEMA_VERSION}", got "${raw['schemaVersion'] ?? '(missing)'}"`,
     );
   }
   const rawData = raw['data'] as Record<string, unknown> | null | undefined;
@@ -245,7 +245,7 @@ export function selectTop10(
     rawRankedByTopic === null
   ) {
     throw new Error(
-      'ranking artifact is malformed: missing required fields (artifact, data.rankedByTopic)'
+      'ranking artifact is malformed: missing required fields (artifact, data.rankedByTopic)',
     );
   }
 
