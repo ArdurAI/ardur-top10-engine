@@ -10,8 +10,8 @@
  * safe to re-run.
  */
 
-import type { CycleMeta } from './contracts.ts';
-import { CYCLE_INTERVAL_MS } from './contracts.ts';
+import type { CycleMeta } from '@ardurai/contracts';
+import { CYCLE_INTERVAL_MS } from '@ardurai/contracts';
 
 export { CYCLE_INTERVAL_MS };
 

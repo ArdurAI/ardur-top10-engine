@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SCHEMA_VERSION, CYCLE_INTERVAL_MS } from './contracts.ts';
+import { SCHEMA_VERSION, CYCLE_INTERVAL_MS } from '@ardurai/contracts';
 import { selectTop10, runCycle, cycleFor } from './index.ts';
 import { makeRanking, makeCluster, makeScore } from './fixtures.ts';
 

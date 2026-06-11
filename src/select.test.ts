@@ -11,7 +11,8 @@ import {
   makeTop10,
   makeTop10Entry,
 } from './fixtures.ts';
-import type { RankedCluster } from './contracts.ts';
+import { SchemaVersionError } from '@ardurai/contracts';
+import type { RankedCluster } from '@ardurai/contracts';
 
 function ai(clusterId: string, total: number, over: Partial<RankedCluster> = {}): RankedCluster {
   return makeCluster({
@@ -171,29 +172,32 @@ test('references are populated when aggregation is provided, else warned + empty
 
 // ── Issue #8: schemaVersion gate + structural validation ──────────────────────
 
-test('selectTop10 throws a clear error on wrong schemaVersion', () => {
+test('selectTop10 throws SchemaVersionError on wrong schemaVersion', () => {
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking, schemaVersion: 'ardur-content-pipeline/v0' };
-  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /schema mismatch/);
+  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), SchemaVersionError);
 });
 
-test('selectTop10 throws when schemaVersion is missing entirely', () => {
+test('selectTop10 throws SchemaVersionError when schemaVersion is missing', () => {
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking } as Record<string, unknown>;
   delete bad['schemaVersion'];
-  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /schema mismatch/);
+  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), SchemaVersionError);
 });
 
-test('selectTop10 throws on wrong artifact type', () => {
+test('selectTop10 throws SchemaVersionError on wrong artifact type', () => {
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking, artifact: 'aggregation' };
-  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /malformed/);
+  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), SchemaVersionError);
 });
 
-test('selectTop10 throws when data.rankedByTopic is missing', () => {
+test('selectTop10 returns empty boards when data.rankedByTopic is null (graceful)', () => {
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking, data: { ...ranking.data, rankedByTopic: null } };
-  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /malformed/);
+  const result = selectTop10(bad as unknown as typeof ranking, null);
+  assert.equal(result.artifact, 'top10');
+  assert.deepEqual(result.data.global, []);
+  assert.deepEqual(result.data.top10ByTopic, {});
 });
 
 // ── Issue #9: unionByCluster stable tie-break across topic key order ───────────

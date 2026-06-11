@@ -5,7 +5,7 @@
  * has fixed defaults so tests are reproducible: no clocks, no randomness.
  */
 
-import { SCHEMA_VERSION } from './contracts.ts';
+import { SCHEMA_VERSION } from '@ardurai/contracts';
 import type {
   AggregatedItem,
   AggregationArtifact,
@@ -20,7 +20,7 @@ import type {
   Top10Data,
   Top10Entry,
   TopicMeta,
-} from './contracts.ts';
+} from '@ardurai/contracts';
 
 export const CYCLE: CycleMeta = {
   id: '2026-06-11T06:00Z',

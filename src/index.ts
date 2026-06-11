@@ -7,7 +7,7 @@
  * `ardur-article-synthesizer`. Also owns the 6-hour refresh loop (orchestrate.ts).
  */
 
-export * from './contracts.ts';
+export * from '@ardurai/contracts';
 
 // Selection (pure core)
 export {

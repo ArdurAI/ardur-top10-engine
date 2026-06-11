@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runCycle, type StageRunners, type CyclePublishSet } from './orchestrate.ts';
-import { SCHEMA_VERSION } from './contracts.ts';
+import { SCHEMA_VERSION } from '@ardurai/contracts';
 import type {
   AggregationArtifact,
   ArticleArtifact,
   RankingArtifact,
   Top10Artifact,
-} from './contracts.ts';
+} from '@ardurai/contracts';
 import { CYCLE, makeAggregation, makeCluster, makeRanking, makeScore } from './fixtures.ts';
 
 function makeArticles(top10: Top10Artifact, warnings: string[] = []): ArticleArtifact {

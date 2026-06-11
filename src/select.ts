@@ -27,12 +27,12 @@ import type {
   Top10Data,
   Top10Entry,
   RankedCluster,
-} from './contracts.ts';
-import { SCHEMA_VERSION } from './contracts.ts';
+  AggregationArtifact,
+} from '@ardurai/contracts';
+import { SCHEMA_VERSION, assertCompatibleArtifact } from '@ardurai/contracts';
 import { nextRefreshAt } from './cycle.ts';
 import { referencesFor, indexItems, DEFAULT_MAX_REFERENCES, type ItemsById } from './references.ts';
 import { computeDelta, computeStability, incumbentIds } from './stability.ts';
-import type { AggregationArtifact } from './contracts.ts';
 
 export interface SelectionOptions {
   /** Entries per topic and for the global board. Default 10. */
@@ -228,26 +228,8 @@ export function selectTop10(
   previous: Top10Artifact | null,
   options: SelectionOptions = {},
 ): Top10Artifact {
-  // Validate the incoming artifact before trusting any of its fields.
-  // Cast through unknown so TypeScript's narrowed type doesn't mask missing/wrong
-  // fields on untrusted runtime input (CWE-20, ARCHITECTURE §5).
-  const raw = ranking as unknown as Record<string, unknown>;
-  if (raw['schemaVersion'] !== SCHEMA_VERSION) {
-    throw new Error(
-      `ranking artifact schema mismatch: expected "${SCHEMA_VERSION}", got "${raw['schemaVersion'] ?? '(missing)'}"`,
-    );
-  }
-  const rawData = raw['data'] as Record<string, unknown> | null | undefined;
-  const rawRankedByTopic = rawData?.['rankedByTopic'];
-  if (
-    raw['artifact'] !== 'ranking' ||
-    typeof rawRankedByTopic !== 'object' ||
-    rawRankedByTopic === null
-  ) {
-    throw new Error(
-      'ranking artifact is malformed: missing required fields (artifact, data.rankedByTopic)',
-    );
-  }
+  // Gate before stamp: reject incompatible upstream artifacts (ARCHITECTURE §5).
+  const { warnings: gateWarnings } = assertCompatibleArtifact(ranking as unknown, 'ranking');
 
   const size = options.size ?? DEFAULT_SIZE;
   const maxReferences = options.maxReferences ?? DEFAULT_MAX_REFERENCES;
@@ -255,7 +237,7 @@ export function selectTop10(
   const maxPerCategory = options.maxPerCategory ?? Math.max(1, Math.ceil(size / 3));
 
   const rankedByTopic = ranking.data.rankedByTopic ?? {};
-  const warnings = [...ranking.warnings];
+  const warnings = [...ranking.warnings, ...gateWarnings];
 
   // References need the aggregation's per-item metadata.
   let itemsById: ItemsById = {};

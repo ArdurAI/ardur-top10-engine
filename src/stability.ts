@@ -11,7 +11,7 @@
  * deltas and the churn report. Pure and deterministic.
  */
 
-import type { Top10Entry, StabilityReport } from './contracts.ts';
+import type { Top10Entry, StabilityReport } from '@ardurai/contracts';
 
 /** Index a previous board by `clusterId` for O(1) incumbent lookups. */
 export function indexByCluster(

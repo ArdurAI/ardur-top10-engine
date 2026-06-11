@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { computeDelta, computeStability } from './stability.ts';
 import { selectTop10 } from './select.ts';
 import { makeCluster, makeRanking, makeScore, makeTop10, makeTop10Entry } from './fixtures.ts';
-import type { RankedCluster, Top10Entry } from './contracts.ts';
+import type { RankedCluster, Top10Entry } from '@ardurai/contracts';
 
 const prevBoard: Top10Entry[] = [
   makeTop10Entry({ clusterId: 'a', rank: 1 }),

@@ -24,7 +24,7 @@ import type {
   Top10Artifact,
   ArticleArtifact,
   CycleMeta,
-} from './contracts.ts';
+} from '@ardurai/contracts';
 import { cycleFor, nextRefreshAt } from './cycle.ts';
 import { selectTop10, type SelectionOptions } from './select.ts';
 
