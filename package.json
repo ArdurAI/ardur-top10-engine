@@ -39,7 +39,8 @@
     "url": "https://github.com/ArdurAI/ardur-top10-engine.git"
   },
   "dependencies": {
-    "@ardurai/contracts": "github:ArdurAI/ardur-contracts#4a47ec8d7302ad3b62a481f83acd7df79709ef79"
+    "@ardurai/contracts": "github:ArdurAI/ardur-contracts#4667a8b1b6886faef40b13d21923e446d64f608d",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",

@@ -96,21 +96,37 @@ const RESERVED_TOPIC_KEYS: ReadonlySet<string> = new Set(
 export { referencesFor, computeDelta };
 
 /**
+ * Coerce a non-finite or non-numeric value to -Infinity so every sort comparison
+ * produces a finite, deterministic result. Clusters with degenerate scores sort
+ * to the bottom rather than breaking the comparator (issue #16).
+ */
+function toFinite(v: number): number {
+  return Number.isFinite(v) ? v : -Infinity;
+}
+
+/**
  * Total-order comparator over the honest score fields. Returns < 0 if `a` should
  * rank ahead of `b`. Tie-break order per issue #2; final `clusterId` tie-break
  * guarantees a deterministic total order (no reliance on sort stability).
+ *
+ * All numeric fields are normalised through `toFinite` so NaN or non-finite
+ * inputs never produce a NaN comparison result (issue #16).
  */
 export function compareClusters(a: RankedCluster, b: RankedCluster): number {
-  if (a.score.total !== b.score.total) return b.score.total - a.score.total;
-  if (a.score.corroboration !== b.score.corroboration) {
-    return b.score.corroboration - a.score.corroboration;
-  }
+  const ta = toFinite(a.score.total);
+  const tb = toFinite(b.score.total);
+  if (ta !== tb) return tb - ta;
+  const ca = toFinite(a.score.corroboration);
+  const cb = toFinite(b.score.corroboration);
+  if (ca !== cb) return cb - ca;
   const ra = Date.parse(a.latestPublishedAt);
   const rb = Date.parse(b.latestPublishedAt);
   const va = Number.isNaN(ra) ? -Infinity : ra;
   const vb = Number.isNaN(rb) ? -Infinity : rb;
   if (va !== vb) return vb - va; // more recent first
-  if (a.distinctDomains !== b.distinctDomains) return b.distinctDomains - a.distinctDomains;
+  const da = toFinite(a.distinctDomains);
+  const db = toFinite(b.distinctDomains);
+  if (da !== db) return db - da;
   if (a.clusterId !== b.clusterId) return a.clusterId < b.clusterId ? -1 : 1;
   return 0;
 }
@@ -135,7 +151,7 @@ function selectBoard(
   // then fall back to the honest tie-breaks. This is the only place hysteresis
   // applies — it decides who is in, never the displayed order.
   const boostedTotal = (c: RankedCluster): number =>
-    c.score.total + (incumbents.has(c.clusterId) ? stabilityMargin : 0);
+    toFinite(c.score.total) + (incumbents.has(c.clusterId) ? stabilityMargin : 0);
 
   const bySelection = [...clusters].sort((a, b) => {
     const ba = boostedTotal(a);
@@ -292,7 +308,7 @@ export function selectTop10(
   const allClusters = Object.values(rankedByTopic).flat() as RankedCluster[];
   const legacyClusters = allClusters.filter((c) => c.references === undefined);
 
-  let itemsById: ItemsById = {};
+  let itemsById: ItemsById = Object.create(null);
   if (options.aggregation) {
     const allItems = Object.values(options.aggregation.data.itemsByTopic ?? {}).flat();
     itemsById = indexItems(allItems);

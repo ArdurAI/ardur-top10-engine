@@ -159,3 +159,42 @@ test('referencesFromCluster sanitizes URLs (strips tracking params)', () => {
 test('referencesFromCluster returns [] for empty input', () => {
   assert.deepEqual(referencesFromCluster([]), []);
 });
+
+// ── Issue #17: indexItems must use null-prototype map ──────────────────────────
+
+test('indexItems returns a null-prototype map (no inherited Object.prototype props)', () => {
+  const items = [makeItem({ id: 'i1', url: 'https://x.com/1' })];
+  const map = indexItems(items);
+  assert.equal(Object.getPrototypeOf(map), null);
+});
+
+test('indexItems: item with id="__proto__" is stored as own property, not prototype mutation', () => {
+  const item = makeItem({ id: '__proto__', url: 'https://reuters.com/proto' });
+  const map = indexItems([item]);
+  // The map's prototype must still be null (not replaced by item)
+  assert.equal(Object.getPrototypeOf(map), null);
+  // The item must be retrievable via own property
+  const desc = Object.getOwnPropertyDescriptor(map, '__proto__');
+  assert.ok(desc !== undefined, 'own descriptor exists for __proto__ key');
+  assert.equal(desc.value, item);
+});
+
+test('indexItems: item with id="constructor" is stored safely', () => {
+  const item = makeItem({ id: 'constructor', url: 'https://reuters.com/ctor' });
+  const map = indexItems([item]);
+  assert.ok(Object.prototype.hasOwnProperty.call(map, 'constructor'));
+});
+
+test('referencesFor resolves a member with id="__proto__" from null-prototype map', () => {
+  const item = makeItem({
+    id: '__proto__',
+    clusterId: 'c1',
+    source: 'Reuters',
+    title: 'Proto article',
+    url: 'https://reuters.com/proto-article',
+  });
+  const cluster = makeCluster({ clusterId: 'c1', memberIds: ['__proto__'] });
+  const refs = referencesFor(cluster, 5, indexItems([item]));
+  assert.equal(refs.length, 1, 'reference resolved');
+  assert.equal(refs[0]?.url, 'https://reuters.com/proto-article');
+});

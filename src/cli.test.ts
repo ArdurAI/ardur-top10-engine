@@ -267,6 +267,30 @@ test('same inputs + --now + --run-id produce byte-identical output', () => {
 // --provider flag passes through
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Zod Tier-2 structural gate (contracts #2)
+// ---------------------------------------------------------------------------
+
+test('--json-errors: NaN score.total (serialised as null) triggers VALIDATION_ERROR at input boundary', () => {
+  // NaN is not valid JSON; JSON.stringify silently converts it to null.
+  // The Zod gate must catch null where z.number().finite() is required.
+  const dir = mkdtempSync(join(tmpdir(), 'top10-cli-test-'));
+  try {
+    const ranking = makeRanking({
+      ai: [makeCluster({ clusterId: 'nan-z', score: makeScore(NaN) })],
+    });
+    // writeTmp calls JSON.stringify → NaN becomes null in the file
+    const badPath = writeTmp(dir, 'ranking-nan.json', ranking);
+
+    const { stdout, status } = runCli(['--ranking', badPath, '--json-errors']);
+    assert.equal(status, 2);
+    const env = JSON.parse(stdout) as { error: { code: string } };
+    assert.equal(env.error.code, 'VALIDATION_ERROR');
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
 test('--provider is accepted without error', () => {
   const ranking = makeRanking({ ai: [makeCluster({ clusterId: 'i1', score: makeScore(1) })] });
   const { status } = runCli(

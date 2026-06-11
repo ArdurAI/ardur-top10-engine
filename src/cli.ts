@@ -17,8 +17,8 @@
  *   --ranking      Required. Path to RankingArtifact JSON, or '-' for stdin.
  *   --previous     Optional. Path to previous Top10Artifact JSON, or '-'.
  *   --aggregation  Optional. Path to AggregationArtifact JSON (for references).
- *   --now          ISO-8601 timestamp. Overrides wall-clock for deterministic
- *                  cycle IDs and generatedAt when the ranking doesn't carry one.
+ *   --now          ISO-8601 timestamp. Sets `generatedAt` on the output artifact.
+ *                  Cycle IDs come from the ranking input, not from this engine.
  *   --run-id       Explicit run ID to stamp on the output artifact.
  *   --provider     Provider hint stamped in output.provider.provider.
  *                  Default: 'deterministic'.
@@ -37,6 +37,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { selectTop10 } from './select.ts';
 import { assertCompatibleArtifact, SCHEMA_VERSION, CONTRACT_REVISION } from '@ardurai/contracts';
+import {
+  parseRankingArtifact,
+  parseTop10Artifact,
+  parseAggregationArtifact,
+} from '@ardurai/contracts/zod';
 import type {
   RankingArtifact,
   Top10Artifact,
@@ -188,6 +193,15 @@ function parseJson(raw: string, label: string, jsonErrors: boolean): unknown {
   }
 }
 
+// Tier-2 Zod parsers keyed by pipeline stage. Each runs Tier-1 (assertCompatibleArtifact)
+// then Zod structural validation — NaN serialised as null, missing required fields, and
+// type mismatches are all caught here before reaching selectTop10 (contracts #2).
+const STAGE_PARSERS: Partial<Record<PipelineStage, (raw: unknown) => unknown>> = {
+  ranking: parseRankingArtifact,
+  top10: parseTop10Artifact,
+  aggregation: parseAggregationArtifact,
+};
+
 function loadArtifact<TStage extends PipelineStage>(
   path: string,
   stage: TStage,
@@ -207,6 +221,7 @@ function loadArtifact<TStage extends PipelineStage>(
     );
   }
 
+  // Tier-1: envelope validation + forward-compat warnings.
   let result: ReturnType<typeof assertCompatibleArtifact<TStage>>;
   try {
     result = assertCompatibleArtifact(parsed, stage);
@@ -223,6 +238,23 @@ function loadArtifact<TStage extends PipelineStage>(
   for (const w of result.warnings) {
     process.stderr.write(`[warn] ${label}: ${w}\n`);
   }
+
+  // Tier-2: Zod structural validation (NaN-as-null, missing fields, type coercions).
+  const zodParser = STAGE_PARSERS[stage];
+  if (zodParser) {
+    try {
+      zodParser(parsed);
+    } catch (e) {
+      return emitError(
+        'VALIDATION_ERROR',
+        `structural validation failed for ${label}`,
+        `input:${label}`,
+        e instanceof Error ? e.message : String(e),
+        jsonErrors,
+      );
+    }
+  }
+
   return result.envelope;
 }
 
@@ -405,7 +437,8 @@ function emitDescribe(): void {
         name: '--now',
         type: 'string',
         required: false,
-        description: 'ISO-8601 timestamp; overrides wall-clock for deterministic ids',
+        description:
+          'ISO-8601 timestamp; sets generatedAt on the output artifact (cycle IDs come from the ranking input)',
       },
       {
         name: '--run-id',

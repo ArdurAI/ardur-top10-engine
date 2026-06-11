@@ -308,6 +308,41 @@ test('unionByCluster: non-tied clusters are still resolved by compareClusters', 
   assert.equal(ba.data.global[0]?.topic, 'beta');
 });
 
+// ── Issue #16: compareClusters must not return NaN on non-finite score fields ───
+
+test('compareClusters: NaN score.total treated as -Infinity, not breaking sort', () => {
+  const normal = ai('b-normal', 5);
+  const nanScore = { ...ai('a-nan', 0), score: { ...makeScore(0), total: NaN } } as RankedCluster;
+  // finite score ranks before NaN-total score
+  assert.ok(compareClusters(normal, nanScore) < 0, 'finite > NaN');
+  // Two NaN totals: fall through to clusterId ('a' < 'b' lexicographically)
+  const nanA = { ...ai('a-nan', 0), score: { ...makeScore(0), total: NaN } } as RankedCluster;
+  const nanB = { ...ai('b-nan', 0), score: { ...makeScore(0), total: NaN } } as RankedCluster;
+  const cmp = compareClusters(nanA, nanB);
+  assert.ok(Number.isFinite(cmp), `comparator returned non-finite: ${cmp}`);
+  assert.ok(cmp < 0, 'a-nan < b-nan by clusterId');
+});
+
+test('compareClusters: NaN corroboration treated as -Infinity', () => {
+  const highCorr = ai('a', 5, { score: makeScore(5, { corroboration: 3 }) });
+  const nanCorr = {
+    ...ai('b', 5),
+    score: { ...makeScore(5), corroboration: NaN },
+  } as RankedCluster;
+  assert.ok(compareClusters(highCorr, nanCorr) < 0, 'finite corroboration > NaN');
+});
+
+test('selectTop10: cluster with NaN score.total sorts last, boards still valid', () => {
+  const nanCluster = { ...ai('nan-c', 0), score: { ...makeScore(0), total: NaN } } as RankedCluster;
+  const good = ai('good-c', 5);
+  const out = selectTop10(makeRanking({ ai: [nanCluster, good] }), null);
+  // good must rank first; NaN → -Infinity means it ranks last
+  assert.equal(out.data.global[0]?.clusterId, 'good-c');
+  assert.equal(out.data.global[1]?.clusterId, 'nan-c');
+  // all ranks are finite positive integers
+  assert.ok(out.data.global.every((e) => Number.isFinite(e.rank) && e.rank > 0));
+});
+
 // ── Issue #13: CWE-915 — reserved topic keys must not corrupt prototype chain ──
 
 test('__proto__ topic key is rejected with warning; prototype of top10ByTopic is not corrupted', () => {

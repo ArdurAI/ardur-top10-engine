@@ -135,3 +135,54 @@ test('safePublicUrl: non-tracking params survive alongside new tracking params',
     'https://reuters.com/a?article=123&page=2',
   );
 });
+
+// ── Issue #14 finish: PII params from FORBIDDEN_METRIC_KEY_FRAGMENTS ────────────
+
+test('safePublicUrl: strips referrer and referer params', () => {
+  assert.equal(
+    safePublicUrl('https://reuters.com/a?referrer=google.com&id=42'),
+    'https://reuters.com/a?id=42',
+  );
+  assert.equal(
+    safePublicUrl('https://reuters.com/a?referer=google.com&id=42'),
+    'https://reuters.com/a?id=42',
+  );
+});
+
+test('safePublicUrl: strips ipaddress param', () => {
+  assert.equal(safePublicUrl('https://reuters.com/a?ipaddress=1.2.3.4&id=1'), 'https://reuters.com/a?id=1');
+});
+
+test('safePublicUrl: strips cookie and secret params', () => {
+  assert.equal(safePublicUrl('https://reuters.com/a?cookie=abc'), 'https://reuters.com/a');
+  assert.equal(safePublicUrl('https://reuters.com/a?secret=xyz'), 'https://reuters.com/a');
+});
+
+test('safePublicUrl: strips phone, fingerprint, useragent params', () => {
+  assert.equal(safePublicUrl('https://reuters.com/a?phone=555-1234'), 'https://reuters.com/a');
+  assert.equal(safePublicUrl('https://reuters.com/a?fingerprint=fp123'), 'https://reuters.com/a');
+  assert.equal(safePublicUrl('https://reuters.com/a?useragent=Mozilla'), 'https://reuters.com/a');
+});
+
+test('safePublicUrl: strips userid, visitorid, deviceid, accountid params', () => {
+  assert.equal(safePublicUrl('https://reuters.com/a?userid=u1&q=x'), 'https://reuters.com/a?q=x');
+  assert.equal(safePublicUrl('https://reuters.com/a?visitorid=v1'), 'https://reuters.com/a');
+  assert.equal(safePublicUrl('https://reuters.com/a?deviceid=d1'), 'https://reuters.com/a');
+  assert.equal(safePublicUrl('https://reuters.com/a?accountid=a1'), 'https://reuters.com/a');
+});
+
+// ── Issue #14 finish: hex/decimal host guard (belt-and-suspenders) ───────────────
+
+test('safePublicUrl: rejects bare hex IP 0x7f000001', () => {
+  // WHATWG URL normalises 0x7f000001 to 127.0.0.1 (already caught by IPv4 check).
+  // The explicit hex guard covers non-normalising environments.
+  assert.equal(safePublicUrl('https://0x7f000001/'), null);
+});
+
+test('safePublicUrl: rejects bare decimal IP 2130706433 (=127.0.0.1)', () => {
+  assert.equal(safePublicUrl('https://2130706433/'), null);
+});
+
+test('safePublicUrl: rejects bare hex 0xc0a80101 (=192.168.1.1)', () => {
+  assert.equal(safePublicUrl('https://0xc0a80101/page'), null);
+});

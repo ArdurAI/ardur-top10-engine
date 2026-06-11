@@ -11,8 +11,10 @@
 
 /**
  * Query parameters that carry tracking / PII and must never appear in a public
- * reference URL. Mirrors the privacy posture of `FORBIDDEN_METRIC_KEY_FRAGMENTS`
- * in @ardurai/contracts (utm_*, click ids, session/referrer markers).
+ * reference URL. Aligned with (and a superset of) `FORBIDDEN_METRIC_KEY_FRAGMENTS`
+ * in @ardurai/contracts — the contracts list guards metric keys; this list guards
+ * URL query params, which overlap but also include ad-network click IDs not found
+ * in metric keys.
  *
  * Matching rule: a fragment ending in '=' requires exact key equality (after
  * removing the '='); all other fragments are substring-matched against the
@@ -48,18 +50,30 @@ const TRACKING_PARAM_FRAGMENTS: readonly string[] = [
   'mc_cid',
   // Instagram
   'igshid',
-  // Generic referral / campaign markers
+  // Generic referral / campaign markers (from FORBIDDEN_METRIC_KEY_FRAGMENTS)
   'ref_',
   'ref=',
   'cmpid',
   'campaign',
-  // Session / auth / PII markers
+  'referrer',
+  'referer',
+  // Session / auth / PII markers (from FORBIDDEN_METRIC_KEY_FRAGMENTS)
   'session',
   'sessionid',
   'sid',
   'token',
+  'secret',
+  'cookie',
   'email',
+  'phone',
   'user',
+  'userid',
+  'visitorid',
+  'deviceid',
+  'accountid',
+  'ipaddress',
+  'useragent',
+  'fingerprint',
 ];
 
 function isTrackingParam(key: string): boolean {
@@ -130,6 +144,13 @@ function isPublicHost(host: string): boolean {
   // Bare IPv6 / IPv4 literals: a public reference should be a hostname, not an
   // IP. Reject the obvious private/loopback ranges and any raw IP to be safe.
   if (host.includes(':')) return false; // IPv6 literal
+
+  // Reject bare integer/hex representations of IP addresses (e.g. 0x7f000001,
+  // 2130706433) that some resolvers treat as 127.0.0.1. The WHATWG URL parser
+  // normalises most of these to dotted decimal before we see them; this guard
+  // is belt-and-suspenders for environments that may not.
+  if (/^(0x[\da-f]+|\d+)$/i.test(host)) return false;
+
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     const octets = host.split('.').map(Number);
     const [a, b] = octets as [number, number, number, number];
