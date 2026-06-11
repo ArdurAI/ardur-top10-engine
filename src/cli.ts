@@ -75,15 +75,25 @@ function parseArgs(argv: string[]): CliArgs {
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--ranking' && argv[i + 1]) { args.ranking = argv[++i] ?? null; }
-    else if (a === '--previous' && argv[i + 1]) { args.previous = argv[++i] ?? null; }
-    else if (a === '--aggregation' && argv[i + 1]) { args.aggregation = argv[++i] ?? null; }
-    else if (a === '--now' && argv[i + 1]) { args.now = argv[++i] ?? null; }
-    else if (a === '--run-id' && argv[i + 1]) { args.runId = argv[++i] ?? null; }
-    else if (a === '--provider' && argv[i + 1]) { args.provider = argv[++i] ?? 'deterministic'; }
-    else if (a === '--out' && argv[i + 1]) { args.out = argv[++i] ?? null; }
-    else if (a === '--json-errors') { args.jsonErrors = true; }
-    else if (a === '--describe') { args.describe = true; }
+    if (a === '--ranking' && argv[i + 1]) {
+      args.ranking = argv[++i] ?? null;
+    } else if (a === '--previous' && argv[i + 1]) {
+      args.previous = argv[++i] ?? null;
+    } else if (a === '--aggregation' && argv[i + 1]) {
+      args.aggregation = argv[++i] ?? null;
+    } else if (a === '--now' && argv[i + 1]) {
+      args.now = argv[++i] ?? null;
+    } else if (a === '--run-id' && argv[i + 1]) {
+      args.runId = argv[++i] ?? null;
+    } else if (a === '--provider' && argv[i + 1]) {
+      args.provider = argv[++i] ?? 'deterministic';
+    } else if (a === '--out' && argv[i + 1]) {
+      args.out = argv[++i] ?? null;
+    } else if (a === '--json-errors') {
+      args.jsonErrors = true;
+    } else if (a === '--describe') {
+      args.describe = true;
+    }
   }
 
   return args;
@@ -114,8 +124,10 @@ function emitError(
   const exitCode = code === 'USAGE_ERROR' ? 1 : code === 'SELECTION_ERROR' ? 3 : 2;
 
   if (jsonErrors) {
-    const errObj: { code: ErrorCode; message: string; stage: string; detail?: string } = {
-      code, message, stage,
+    const errObj: ErrorEnvelope['error'] = {
+      code,
+      message,
+      stage,
     };
     if (detail !== undefined) errObj.detail = detail;
     process.stdout.write(JSON.stringify({ error: errObj }) + '\n');
@@ -229,7 +241,17 @@ function writeOutput(content: string, outPath: string | null): void {
 function emitDescribe(): void {
   const artifactEnvelopeSchema = {
     type: 'object',
-    required: ['schemaVersion', 'artifact', 'runId', 'upstreamRunId', 'generatedAt', 'cycle', 'topics', 'warnings', 'data'],
+    required: [
+      'schemaVersion',
+      'artifact',
+      'runId',
+      'upstreamRunId',
+      'generatedAt',
+      'cycle',
+      'topics',
+      'warnings',
+      'data',
+    ],
     properties: {
       schemaVersion: { type: 'string', const: SCHEMA_VERSION },
       contractRevision: { type: 'integer', maximum: CONTRACT_REVISION },
@@ -241,7 +263,10 @@ function emitDescribe(): void {
         type: 'object',
         required: ['id', 'windowStart', 'windowEnd'],
         properties: {
-          id: { type: 'string', description: 'ISO-8601 UTC window start, e.g. 2026-06-11T06:00:00.000Z' },
+          id: {
+            type: 'string',
+            description: 'ISO-8601 UTC window start, e.g. 2026-06-11T06:00:00.000Z',
+          },
           windowStart: { type: 'string', format: 'date-time' },
           windowEnd: { type: 'string', format: 'date-time' },
         },
@@ -281,11 +306,13 @@ function emitDescribe(): void {
           allOf: [artifactEnvelopeSchema, { properties: { artifact: { const: 'ranking' } } }],
         },
         previous: {
-          description: 'Top10Artifact from the previous cycle — used for deltas and stability (optional)',
+          description:
+            'Top10Artifact from the previous cycle — used for deltas and stability (optional)',
           allOf: [artifactEnvelopeSchema, { properties: { artifact: { const: 'top10' } } }],
         },
         aggregation: {
-          description: 'AggregationArtifact — provides source references; without it, Top10Entry.references is empty (optional)',
+          description:
+            'AggregationArtifact — provides source references; without it, Top10Entry.references is empty (optional)',
           allOf: [artifactEnvelopeSchema, { properties: { artifact: { const: 'aggregation' } } }],
         },
       },
@@ -310,7 +337,16 @@ function emitDescribe(): void {
                   maxItems: 10,
                   items: {
                     type: 'object',
-                    required: ['rank', 'clusterId', 'topic', 'headline', 'score', 'references', 'delta', 'carriedOver'],
+                    required: [
+                      'rank',
+                      'clusterId',
+                      'topic',
+                      'headline',
+                      'score',
+                      'references',
+                      'delta',
+                      'carriedOver',
+                    ],
                     properties: {
                       rank: { type: 'integer', minimum: 1 },
                       clusterId: { type: 'string' },
@@ -347,15 +383,61 @@ function emitDescribe(): void {
       ],
     },
     flags: [
-      { name: '--ranking', type: 'string', required: true, description: 'Path to RankingArtifact JSON, or - for stdin' },
-      { name: '--previous', type: 'string', required: false, description: 'Path to previous Top10Artifact JSON, or -' },
-      { name: '--aggregation', type: 'string', required: false, description: 'Path to AggregationArtifact JSON, or -' },
-      { name: '--now', type: 'string', required: false, description: 'ISO-8601 timestamp; overrides wall-clock for deterministic ids' },
-      { name: '--run-id', type: 'string', required: false, description: 'Explicit run ID for the output artifact' },
-      { name: '--provider', type: 'string', required: false, default: 'deterministic', description: 'Provider hint stamped in output.provider.provider' },
-      { name: '--out', type: 'string', required: false, description: 'Output path or - for stdout (default: stdout)' },
-      { name: '--json-errors', type: 'boolean', required: false, description: 'Emit structured JSON error envelopes instead of plain text' },
-      { name: '--describe', type: 'boolean', required: false, description: 'Emit this schema and exit' },
+      {
+        name: '--ranking',
+        type: 'string',
+        required: true,
+        description: 'Path to RankingArtifact JSON, or - for stdin',
+      },
+      {
+        name: '--previous',
+        type: 'string',
+        required: false,
+        description: 'Path to previous Top10Artifact JSON, or -',
+      },
+      {
+        name: '--aggregation',
+        type: 'string',
+        required: false,
+        description: 'Path to AggregationArtifact JSON, or -',
+      },
+      {
+        name: '--now',
+        type: 'string',
+        required: false,
+        description: 'ISO-8601 timestamp; overrides wall-clock for deterministic ids',
+      },
+      {
+        name: '--run-id',
+        type: 'string',
+        required: false,
+        description: 'Explicit run ID for the output artifact',
+      },
+      {
+        name: '--provider',
+        type: 'string',
+        required: false,
+        default: 'deterministic',
+        description: 'Provider hint stamped in output.provider.provider',
+      },
+      {
+        name: '--out',
+        type: 'string',
+        required: false,
+        description: 'Output path or - for stdout (default: stdout)',
+      },
+      {
+        name: '--json-errors',
+        type: 'boolean',
+        required: false,
+        description: 'Emit structured JSON error envelopes instead of plain text',
+      },
+      {
+        name: '--describe',
+        type: 'boolean',
+        required: false,
+        description: 'Emit this schema and exit',
+      },
     ],
   };
 
@@ -384,11 +466,21 @@ function main(): void {
     );
   }
 
-  const ranking = loadArtifact(args.ranking, 'ranking', 'ranking', args.jsonErrors) as unknown as RankingArtifact;
+  const ranking = loadArtifact(
+    args.ranking,
+    'ranking',
+    'ranking',
+    args.jsonErrors,
+  ) as unknown as RankingArtifact;
 
   let previous: Top10Artifact | null = null;
   if (args.previous && args.previous !== '-') {
-    previous = loadArtifact(args.previous, 'top10', 'previous', args.jsonErrors) as unknown as Top10Artifact;
+    previous = loadArtifact(
+      args.previous,
+      'top10',
+      'previous',
+      args.jsonErrors,
+    ) as unknown as Top10Artifact;
   } else if (args.previous === '-') {
     // '-' for previous means "no previous" (empty stdin sentinel kept for compatibility)
     previous = null;

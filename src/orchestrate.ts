@@ -179,14 +179,16 @@ function cliMain(): void {
   let jsonErrors = false;
 
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--now' && argv[i + 1]) { nowArg = argv[++i] ?? null; }
-    else if (argv[i] === '--json-errors') { jsonErrors = true; }
-    else if (argv[i] === '--help' || argv[i] === '-h') {
+    if (argv[i] === '--now' && argv[i + 1]) {
+      nowArg = argv[++i] ?? null;
+    } else if (argv[i] === '--json-errors') {
+      jsonErrors = true;
+    } else if (argv[i] === '--help' || argv[i] === '-h') {
       process.stdout.write(
         'Usage: orchestrate.ts [--now <iso8601>] [--json-errors]\n' +
-        '\n' +
-        'Prints the CycleMeta derived for the given instant (or now).\n' +
-        'Full pipeline execution requires ardur-pipeline with injected runners.\n',
+          '\n' +
+          'Prints the CycleMeta derived for the given instant (or now).\n' +
+          'Full pipeline execution requires ardur-pipeline with injected runners.\n',
       );
       return;
     }
@@ -198,7 +200,9 @@ function cliMain(): void {
     if (Number.isNaN(now.getTime())) {
       const msg = `invalid --now value: "${nowArg}" is not a valid ISO-8601 timestamp`;
       if (jsonErrors) {
-        process.stdout.write(JSON.stringify({ error: { code: 'USAGE_ERROR', message: msg, stage: 'cli' } }) + '\n');
+        process.stdout.write(
+          JSON.stringify({ error: { code: 'USAGE_ERROR', message: msg, stage: 'cli' } }) + '\n',
+        );
       }
       process.stderr.write(`ardur-top10-engine/orchestrate: ${msg}\n`);
       process.exit(1);

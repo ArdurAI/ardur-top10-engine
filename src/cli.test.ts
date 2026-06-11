@@ -13,13 +13,16 @@ import { writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SCHEMA_VERSION, CONTRACT_REVISION } from '@ardurai/contracts';
-import { makeRanking, makeCluster, makeScore, makeAggregation, makeItem, CYCLE, TOPICS } from './fixtures.ts';
+import { makeRanking, makeCluster, makeScore, makeAggregation, makeItem } from './fixtures.ts';
 
 const CLI = new URL('./cli.ts', import.meta.url).pathname;
 const NODE = process.execPath;
 const NODE_ARGS = ['--experimental-strip-types'];
 
-function runCli(args: string[], stdin?: string): { stdout: string; stderr: string; status: number | null } {
+function runCli(
+  args: string[],
+  stdin?: string,
+): { stdout: string; stderr: string; status: number | null } {
   const result = spawnSync(NODE, [...NODE_ARGS, CLI, ...args], {
     input: stdin,
     encoding: 'utf8',
@@ -48,7 +51,10 @@ test('--describe emits valid JSON with required fields', () => {
   const desc = JSON.parse(stdout) as Record<string, unknown>;
   assert.equal(desc.name, 'ardur-top10-engine');
   assert.equal(desc.stage, 'top10');
-  assert.deepEqual(desc.contract, { schemaVersion: SCHEMA_VERSION, contractRevision: CONTRACT_REVISION });
+  assert.deepEqual(desc.contract, {
+    schemaVersion: SCHEMA_VERSION,
+    contractRevision: CONTRACT_REVISION,
+  });
   assert.ok(desc.input, 'input schema present');
   assert.ok(desc.output, 'output schema present');
   assert.ok(Array.isArray(desc.flags), 'flags array present');
@@ -65,7 +71,17 @@ test('--describe flags list contains all uniform flags', () => {
   const { stdout } = runCli(['--describe']);
   const desc = JSON.parse(stdout) as { flags: Array<{ name: string }> };
   const names = desc.flags.map((f) => f.name);
-  for (const flag of ['--ranking', '--previous', '--aggregation', '--now', '--run-id', '--provider', '--out', '--json-errors', '--describe']) {
+  for (const flag of [
+    '--ranking',
+    '--previous',
+    '--aggregation',
+    '--now',
+    '--run-id',
+    '--provider',
+    '--out',
+    '--json-errors',
+    '--describe',
+  ]) {
     assert.ok(names.includes(flag), `flag ${flag} present`);
   }
 });
@@ -77,7 +93,9 @@ test('--describe flags list contains all uniform flags', () => {
 test('--ranking <file> produces a valid Top10Artifact', () => {
   const dir = mkdtempSync(join(tmpdir(), 'top10-cli-test-'));
   try {
-    const ranking = makeRanking({ ai: [makeCluster({ clusterId: 'a1', topic: 'ai', score: makeScore(9) })] });
+    const ranking = makeRanking({
+      ai: [makeCluster({ clusterId: 'a1', topic: 'ai', score: makeScore(9) })],
+    });
     const rankPath = writeTmp(dir, 'ranking.json', ranking);
 
     const { stdout, status } = runCli(['--ranking', rankPath]);
@@ -92,7 +110,9 @@ test('--ranking <file> produces a valid Top10Artifact', () => {
 });
 
 test('--ranking - reads ranking from stdin', () => {
-  const ranking = makeRanking({ ai: [makeCluster({ clusterId: 'b1', topic: 'ai', score: makeScore(5) })] });
+  const ranking = makeRanking({
+    ai: [makeCluster({ clusterId: 'b1', topic: 'ai', score: makeScore(5) })],
+  });
   const { stdout, status } = runCli(['--ranking', '-'], JSON.stringify(ranking));
   assert.equal(status, 0, 'exit 0');
   const out = JSON.parse(stdout) as Record<string, unknown>;
@@ -169,7 +189,11 @@ test('output cycle.id is full ISO 8601 UTC with milliseconds', () => {
   const { stdout, status } = runCli(['--ranking', '-'], JSON.stringify(ranking));
   assert.equal(status, 0);
   const out = JSON.parse(stdout) as { cycle: { id: string } };
-  assert.match(out.cycle.id, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, 'full ISO 8601 with ms');
+  assert.match(
+    out.cycle.id,
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    'full ISO 8601 with ms',
+  );
 });
 
 // ---------------------------------------------------------------------------
