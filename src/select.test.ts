@@ -308,6 +308,56 @@ test('unionByCluster: non-tied clusters are still resolved by compareClusters', 
   assert.equal(ba.data.global[0]?.topic, 'beta');
 });
 
+// ── Issue #13: CWE-915 — reserved topic keys must not corrupt prototype chain ──
+
+test('__proto__ topic key is rejected with warning; prototype of top10ByTopic is not corrupted', () => {
+  // JSON.parse creates "__proto__" via [[DefineOwnProperty]], not [[Set]], so it
+  // becomes an own enumerable property on the parsed object — Object.entries sees it.
+  // We replicate that here with Object.defineProperty to avoid relying on JSON.parse
+  // behaviour in the test harness.
+  const clusters: Record<string, RankedCluster[]> = {};
+  Object.defineProperty(clusters, '__proto__', {
+    value: [ai('c-proto', 10)],
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+  clusters['ai'] = [ai('c-normal', 5)];
+
+  const ranking = makeRanking(clusters);
+  const out = selectTop10(ranking, null);
+
+  // Prototype of top10ByTopic must remain Object.prototype (no setter-side effect).
+  assert.equal(Object.getPrototypeOf(out.data.top10ByTopic), Object.prototype);
+  // "__proto__" must not appear as an own key on the output map.
+  assert.ok(!Object.prototype.hasOwnProperty.call(out.data.top10ByTopic, '__proto__'));
+  // The legitimate 'ai' board must still be built.
+  assert.ok(Object.prototype.hasOwnProperty.call(out.data.top10ByTopic, 'ai'));
+  assert.equal(out.data.top10ByTopic['ai']?.length, 1);
+  // The rejected key must appear in warnings.
+  assert.ok(out.warnings.some((w) => w.includes('"__proto__"')));
+  // The c-proto cluster (which came from the rejected topic) must not appear in global.
+  assert.ok(!out.data.global.some((e) => e.clusterId === 'c-proto'));
+});
+
+test('constructor and toString topic keys are also rejected as reserved names', () => {
+  const clusters: Record<string, RankedCluster[]> = {};
+  Object.defineProperty(clusters, 'constructor', {
+    value: [ai('c-ctor', 10)],
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+  clusters['ai'] = [ai('c-normal', 5)];
+
+  const ranking = makeRanking(clusters);
+  const out = selectTop10(ranking, null);
+
+  assert.ok(!Object.prototype.hasOwnProperty.call(out.data.top10ByTopic, 'constructor'));
+  assert.ok(out.warnings.some((w) => w.includes('"constructor"')));
+  assert.ok(Object.prototype.hasOwnProperty.call(out.data.top10ByTopic, 'ai'));
+});
+
 test('deltas + carriedOver computed vs the previous global board', () => {
   const previous = makeTop10([
     makeTop10Entry({ clusterId: 'a1', rank: 1 }),

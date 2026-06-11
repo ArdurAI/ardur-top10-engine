@@ -79,6 +79,19 @@ export const DEFAULT_SIZE = 10;
 /** Candidate keys treated as a pre-merged global/"all" board if present. */
 const GLOBAL_KEYS = ['all', 'global'] as const;
 
+/**
+ * Object.prototype own-property names that must never be used as topic keys.
+ *
+ * JSON.parse creates object properties via [[DefineOwnProperty]], not [[Set]], so a
+ * key like "__proto__" becomes an own enumerable property on the parsed object.
+ * Later assigning that key to a plain `{}` output map invokes the __proto__ setter
+ * on Object.prototype and silently corrupts the map's prototype chain (CWE-915).
+ * We reject these keys at ingestion time rather than trying to route around the hazard.
+ */
+const RESERVED_TOPIC_KEYS: ReadonlySet<string> = new Set(
+  Object.getOwnPropertyNames(Object.prototype),
+);
+
 // Re-exported so the public surface (index.ts) stays stable.
 export { referencesFor, computeDelta };
 
@@ -257,8 +270,21 @@ export function selectTop10(
   const stabilityMargin = options.stabilityMargin ?? 0;
   const maxPerCategory = options.maxPerCategory ?? Math.max(1, Math.ceil(size / 3));
 
-  const rankedByTopic = ranking.data.rankedByTopic ?? {};
+  const rawRankedByTopic = ranking.data.rankedByTopic ?? {};
   const warnings = [...ranking.warnings, ...gateWarnings];
+
+  // Sanitize topic keys: reject any that shadow Object.prototype own properties.
+  // Object.entries returns JSON.parse-created "__proto__" as an own enumerable entry;
+  // assigning such a key to a plain-object output map would invoke the __proto__
+  // setter and silently corrupt the map's prototype chain (CWE-915).
+  const rankedByTopic: Record<string, RankedCluster[]> = {};
+  for (const [k, v] of Object.entries(rawRankedByTopic)) {
+    if (RESERVED_TOPIC_KEYS.has(k)) {
+      warnings.push(`topic key rejected (reserved name): "${k}"`);
+    } else {
+      rankedByTopic[k] = (v ?? []) as RankedCluster[];
+    }
+  }
 
   // References: Rev 3 clusters carry pre-built references from the ranking engine
   // (RankedCluster.references). For rev 1/2 producers that omit the field, fall

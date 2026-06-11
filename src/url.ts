@@ -2,29 +2,58 @@
  * URL normalization + safety for copyright-safe references.
  *
  * References must carry a *canonical, public, PII-free* link or be dropped.
- * Aggregated items arrive already normalized (contracts.ts: "normalized public
+ * Aggregated items arrive already normalized (@ardurai/contracts: "normalized public
  * article URL, no PII, no fragment"), but this engine re-validates defensively
  * so a malformed upstream URL can never leak into a published `SourceRef`.
  *
- * Pure and deterministic: no network, no DNS. We screen on structure only.
+ * Pure and deterministic: no network, no DNS, no wall-clock reads.
  */
 
 /**
  * Query parameters that carry tracking / PII and must never appear in a public
  * reference URL. Mirrors the privacy posture of `FORBIDDEN_METRIC_KEY_FRAGMENTS`
- * in contracts.ts (utm_*, click ids, session/referrer markers).
+ * in @ardurai/contracts (utm_*, click ids, session/referrer markers).
+ *
+ * Matching rule: a fragment ending in '=' requires exact key equality (after
+ * removing the '='); all other fragments are substring-matched against the
+ * lowercased key.
  */
 const TRACKING_PARAM_FRAGMENTS: readonly string[] = [
+  // UTM family (Google Analytics campaign params)
   'utm_',
+  // Google: click IDs, Analytics, display/shopping
   'gclid',
+  'dclid',
+  '_ga',
+  '_gl',
+  'gbraid',
+  'wbraid',
+  'srsltid',
+  // Meta / Facebook
   'fbclid',
+  // Microsoft / Bing Ads
+  'msclkid',
+  // Twitter / X Ads
+  'twclid',
+  // LinkedIn First-Party Ad Tracking
+  'li_fat_id',
+  // Yandex
+  'yclid',
+  // Pinterest
+  'epik',
+  // Impact / affiliate networks
+  'irclickid',
+  // Mailchimp
   'mc_eid',
   'mc_cid',
+  // Instagram
   'igshid',
+  // Generic referral / campaign markers
   'ref_',
   'ref=',
   'cmpid',
   'campaign',
+  // Session / auth / PII markers
   'session',
   'sessionid',
   'sid',
