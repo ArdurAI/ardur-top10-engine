@@ -14,7 +14,7 @@ test('cycle interval is 6 hours', () => {
 
 test('public surface is wired and runnable end to end', () => {
   const c = cycleFor(new Date('2026-06-11T06:00:00Z'));
-  assert.equal(c.id, '2026-06-11T06:00Z');
+  assert.equal(c.id, '2026-06-11T06:00:00.000Z');
 
   const ranking = makeRanking({
     ai: [makeCluster({ clusterId: 'a1', topic: 'ai', score: makeScore(5) })],

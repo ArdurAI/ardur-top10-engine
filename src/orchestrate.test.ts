@@ -123,7 +123,7 @@ test('idempotent re-run: an already-published cycle short-circuits', async () =>
 test('backfill: the cycle is derived from the provided instant', async () => {
   const { runners } = makeRunners();
   const res = await runCycle(runners, { now: new Date('2026-06-10T19:05:00Z') });
-  assert.equal(res.cycle.id, '2026-06-10T18:00Z');
+  assert.equal(res.cycle.id, '2026-06-10T18:00:00.000Z');
 });
 
 test('two runs of the same cycle produce identical published top10 (deterministic)', async () => {

@@ -23,7 +23,7 @@ import type {
 } from '@ardurai/contracts';
 
 export const CYCLE: CycleMeta = {
-  id: '2026-06-11T06:00Z',
+  id: '2026-06-11T06:00:00.000Z',
   windowStart: '2026-06-11T06:00:00.000Z',
   windowEnd: '2026-06-11T12:00:00.000Z',
 };
@@ -79,8 +79,8 @@ export function makeRanking(
   return {
     schemaVersion: SCHEMA_VERSION,
     artifact: 'ranking',
-    runId: 'ranking:2026-06-11T06:00Z',
-    upstreamRunId: 'aggregation:2026-06-11T06:00Z',
+    runId: 'ranking:2026-06-11T06:00:00.000Z',
+    upstreamRunId: 'aggregation:2026-06-11T06:00:00.000Z',
     generatedAt: '2026-06-11T06:40:00.000Z',
     cycle: CYCLE,
     topics: TOPICS,
@@ -135,7 +135,7 @@ export function makeAggregation(
   return {
     schemaVersion: SCHEMA_VERSION,
     artifact: 'aggregation',
-    runId: 'aggregation:2026-06-11T06:00Z',
+    runId: 'aggregation:2026-06-11T06:00:00.000Z',
     upstreamRunId: null,
     generatedAt: '2026-06-11T06:10:00.000Z',
     cycle: CYCLE,
@@ -178,8 +178,8 @@ export function makeTop10(
   return {
     schemaVersion: SCHEMA_VERSION,
     artifact: 'top10',
-    runId: 'top10:2026-06-11T06:00Z',
-    upstreamRunId: 'ranking:2026-06-11T06:00Z',
+    runId: 'top10:2026-06-11T06:00:00.000Z',
+    upstreamRunId: 'ranking:2026-06-11T06:00:00.000Z',
     generatedAt: '2026-06-11T06:45:00.000Z',
     cycle: CYCLE,
     topics: TOPICS,

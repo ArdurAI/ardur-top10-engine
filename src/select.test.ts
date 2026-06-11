@@ -142,7 +142,7 @@ test('artifact envelope is wired: ids, cycle, nextRefreshAt', () => {
   const ranking = makeRanking({ ai: [ai('a1', 1)] });
   const out = selectTop10(ranking, null);
   assert.equal(out.artifact, 'top10');
-  assert.equal(out.runId, 'top10:2026-06-11T06:00Z');
+  assert.equal(out.runId, 'top10:2026-06-11T06:00:00.000Z');
   assert.equal(out.upstreamRunId, ranking.runId);
   assert.equal(out.generatedAt, ranking.generatedAt); // deterministic, inherited
   assert.equal(out.data.nextRefreshAt, CYCLE.windowEnd);

@@ -4,8 +4,9 @@
  * Cycles are aligned to UTC: windows start at 00:00, 06:00, 12:00, 18:00. The
  * window start is `floor(now, 6h)` computed on the epoch (timezone- and
  * DST-agnostic integer arithmetic — see docs/research-notes.md §3). `cycle.id`
- * is the ISO window-start (minute precision, `Z` suffix), human-readable and
- * lexicographically sortable. Every stage is idempotent per `cycle.id`, so a
+ * is the full ISO 8601 UTC window-start (e.g. `2026-06-11T06:00:00.000Z`),
+ * matching ardur-pipeline's canonical wire format exactly. Every stage is
+ * idempotent per `cycle.id`, so a
  * drifted, retried, or backfilled trigger resolves to the same cycle and is
  * safe to re-run.
  */
@@ -16,14 +17,13 @@ import { CYCLE_INTERVAL_MS } from '@ardurai/contracts';
 export { CYCLE_INTERVAL_MS };
 
 /**
- * Format an epoch instant as a stable cycle id: `YYYY-MM-DDTHH:mmZ` (UTC,
- * minute precision). Derived from the ISO string so it is deterministic and
- * sorts chronologically as a plain string.
+ * Format an epoch instant as a stable cycle id in the canonical wire format:
+ * full ISO 8601 UTC with milliseconds (e.g. `2026-06-11T06:00:00.000Z`).
+ * Matches ardur-pipeline's format so cross-engine cycle-consistency checks
+ * never produce spurious `cycle-mismatch` warnings.
  */
 function cycleId(epochMs: number): string {
-  // toISOString() is always UTC: "2026-06-11T06:00:00.000Z".
-  // Trim to minute precision and re-append the zone marker.
-  return new Date(epochMs).toISOString().slice(0, 16) + 'Z';
+  return new Date(epochMs).toISOString();
 }
 
 /** Floor an epoch instant to the start of its 6-hour UTC window. */

@@ -18,6 +18,7 @@
  * See docs/research-notes.md §1, §2, §4 for the reasoning.
  */
 
+import { fileURLToPath } from 'node:url';
 import type {
   AggregationArtifact,
   RankingArtifact,
@@ -67,7 +68,7 @@ export interface RunCycleOptions {
   selection?: SelectionOptions;
 }
 
-function errMessage(e: unknown): string {
+export function errMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   return String(e);
 }
@@ -154,3 +155,73 @@ export async function runCycle(
   const status = upstreamWarnings.length > 0 ? 'degraded' : 'published';
   return { cycle, status, warnings: allWarnings, nextRefreshAt: next };
 }
+
+// ---------------------------------------------------------------------------
+// CLI entrypoint — runs only when invoked directly (not imported).
+//
+// Usage:
+//   node --experimental-strip-types src/orchestrate.ts [--now <iso8601>] [--json-errors]
+//
+// Flags:
+//   --now          ISO-8601 timestamp used to derive the cycle (backfill support).
+//                  Default: current wall clock.
+//   --json-errors  Emit errors as JSON to stdout instead of plain stderr text.
+//
+// This is a library: full-cycle execution (aggregate→rank→synthesize→publish)
+// requires injected StageRunners. Use `ardur-pipeline` for production runs.
+// When invoked directly this prints the cycle meta for the given --now value —
+// useful for verifying cycle math and debugging backfill targets.
+// ---------------------------------------------------------------------------
+
+function cliMain(): void {
+  const argv = process.argv.slice(2);
+  let nowArg: string | null = null;
+  let jsonErrors = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--now' && argv[i + 1]) { nowArg = argv[++i] ?? null; }
+    else if (argv[i] === '--json-errors') { jsonErrors = true; }
+    else if (argv[i] === '--help' || argv[i] === '-h') {
+      process.stdout.write(
+        'Usage: orchestrate.ts [--now <iso8601>] [--json-errors]\n' +
+        '\n' +
+        'Prints the CycleMeta derived for the given instant (or now).\n' +
+        'Full pipeline execution requires ardur-pipeline with injected runners.\n',
+      );
+      return;
+    }
+  }
+
+  let now: Date;
+  if (nowArg) {
+    now = new Date(nowArg);
+    if (Number.isNaN(now.getTime())) {
+      const msg = `invalid --now value: "${nowArg}" is not a valid ISO-8601 timestamp`;
+      if (jsonErrors) {
+        process.stdout.write(JSON.stringify({ error: { code: 'USAGE_ERROR', message: msg, stage: 'cli' } }) + '\n');
+      }
+      process.stderr.write(`ardur-top10-engine/orchestrate: ${msg}\n`);
+      process.exit(1);
+    }
+  } else {
+    now = new Date();
+  }
+
+  const cycle = cycleFor(now);
+  process.stdout.write(
+    JSON.stringify(
+      {
+        engine: 'ardur-top10-engine',
+        mode: 'cycle-info',
+        derivedFrom: now.toISOString(),
+        cycle,
+        nextRefreshAt: nextRefreshAt(cycle),
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+}
+
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) cliMain();
