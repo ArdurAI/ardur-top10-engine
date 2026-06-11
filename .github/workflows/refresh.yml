@@ -3,8 +3,11 @@ name: 6-Hour Intelligence Refresh
 # Orchestrates one full pipeline cycle every 6 hours (UTC-aligned):
 #   aggregate -> rank -> select Top-10 -> synthesize -> publish.
 #
-# SCAFFOLD ONLY: `npm run orchestrate` is stubbed. Wire it to the sibling
-# engines (lib import or CLI piping) before enabling on a schedule.
+# `runCycle()` (src/orchestrate.ts) is implemented: it derives the cycle from
+# floor(now, 6h) UTC, drives the stages via injected StageRunners, is idempotent
+# per cycle.id, and is last-good-wins on failure. The runner wiring to the sibling
+# engines (lib import or CLI piping) is added as each engine ships; until then the
+# `orchestrate` entrypoint is a no-op placeholder and the publish step is omitted.
 
 on:
   schedule:

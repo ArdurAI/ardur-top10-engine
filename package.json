@@ -19,9 +19,12 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test --experimental-strip-types src/smoke.test.ts",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
     "select": "node --experimental-strip-types src/cli.ts",
     "orchestrate": "node --experimental-strip-types src/orchestrate.ts"
   },
@@ -36,9 +39,12 @@
     "type": "git",
     "url": "https://github.com/ArdurAI/ardur-top10-engine.git"
   },
-  "dependencies": {},
   "devDependencies": {
+    "@eslint/js": "9.39.4",
+    "@types/node": "^22.10.0",
+    "eslint": "9.39.4",
+    "prettier": "3.8.4",
     "typescript": "^5.7.0",
-    "@types/node": "^22.10.0"
+    "typescript-eslint": "8.61.0"
   }
 }
