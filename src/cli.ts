@@ -14,10 +14,34 @@
 
 import { readFileSync } from 'node:fs';
 import { selectTop10 } from './select.ts';
+import { SCHEMA_VERSION } from './contracts.ts';
 import type { RankingArtifact, Top10Artifact, AggregationArtifact } from './contracts.ts';
 
-function readJson<T>(path: string): T {
-  return JSON.parse(readFileSync(path, 'utf8')) as T;
+function readJson(path: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${path}: expected a JSON object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function validateEnvelope(obj: Record<string, unknown>, expectedArtifact: string, filePath: string): void {
+  if (!('schemaVersion' in obj)) {
+    throw new Error(`${filePath}: missing required field "schemaVersion" — is this an Ardur pipeline artifact?`);
+  }
+  if (obj['schemaVersion'] !== SCHEMA_VERSION) {
+    throw new Error(
+      `${filePath}: schema mismatch: expected "${SCHEMA_VERSION}", got "${obj['schemaVersion']}"`
+    );
+  }
+  if (obj['artifact'] !== expectedArtifact) {
+    throw new Error(
+      `${filePath}: artifact type mismatch: expected "${expectedArtifact}", got "${obj['artifact']}"`
+    );
+  }
+  if (typeof obj['data'] !== 'object' || obj['data'] === null) {
+    throw new Error(`${filePath}: missing or malformed "data" field`);
+  }
 }
 
 function main(): void {
@@ -28,10 +52,23 @@ function main(): void {
     throw new Error('usage: cli.ts <ranking.json> [previous-top10.json] [aggregation.json]');
   }
 
-  const ranking = readJson<RankingArtifact>(rankingPath);
-  const previous =
-    previousPath && previousPath !== '-' ? readJson<Top10Artifact>(previousPath) : null;
-  const aggregation = aggregationPath ? readJson<AggregationArtifact>(aggregationPath) : undefined;
+  const rankingRaw = readJson(rankingPath);
+  validateEnvelope(rankingRaw, 'ranking', rankingPath);
+  const ranking = rankingRaw as unknown as RankingArtifact;
+
+  let previous: Top10Artifact | null = null;
+  if (previousPath && previousPath !== '-') {
+    const prevRaw = readJson(previousPath);
+    validateEnvelope(prevRaw, 'top10', previousPath);
+    previous = prevRaw as unknown as Top10Artifact;
+  }
+
+  let aggregation: AggregationArtifact | undefined;
+  if (aggregationPath) {
+    const aggRaw = readJson(aggregationPath);
+    validateEnvelope(aggRaw, 'aggregation', aggregationPath);
+    aggregation = aggRaw as unknown as AggregationArtifact;
+  }
 
   const top10 = selectTop10(ranking, previous, aggregation ? { aggregation } : {});
   process.stdout.write(JSON.stringify(top10, null, 2) + '\n');

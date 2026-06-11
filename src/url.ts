@@ -69,6 +69,12 @@ export function safePublicUrl(raw: string | null | undefined): string | null {
   const host = url.hostname.toLowerCase();
   if (!isPublicHost(host)) return null;
 
+  // Reject any URL carrying userinfo. Legitimate publisher pages never have
+  // user:password@ credentials. Stripping silently changes the effective host
+  // for userinfo-spoof patterns (https://trusted.com@evil.com resolves to
+  // evil.com, not trusted.com), so rejection is safer than stripping.
+  if (url.username !== '' || url.password !== '') return null;
+
   // Drop fragment and tracking params.
   url.hash = '';
   const kept = new URLSearchParams();

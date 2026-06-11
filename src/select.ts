@@ -206,7 +206,14 @@ function unionByCluster(
     if (exclude.has(topic)) continue;
     for (const c of clusters ?? []) {
       const existing = best.get(c.clusterId);
-      if (!existing || compareClusters(c, existing) < 0) best.set(c.clusterId, c);
+      if (!existing) {
+        best.set(c.clusterId, c);
+        continue;
+      }
+      const cmp = compareClusters(c, existing);
+      // On a genuine tie (cmp === 0), use topic key as a stable final tie-break
+      // so Object.entries insertion order cannot affect the winner (issue #9).
+      if (cmp < 0 || (cmp === 0 && c.topic < existing.topic)) best.set(c.clusterId, c);
     }
   }
   return [...best.values()];
@@ -221,6 +228,27 @@ export function selectTop10(
   previous: Top10Artifact | null,
   options: SelectionOptions = {},
 ): Top10Artifact {
+  // Validate the incoming artifact before trusting any of its fields.
+  // Cast through unknown so TypeScript's narrowed type doesn't mask missing/wrong
+  // fields on untrusted runtime input (CWE-20, ARCHITECTURE §5).
+  const raw = ranking as unknown as Record<string, unknown>;
+  if (raw['schemaVersion'] !== SCHEMA_VERSION) {
+    throw new Error(
+      `ranking artifact schema mismatch: expected "${SCHEMA_VERSION}", got "${raw['schemaVersion'] ?? '(missing)'}"`
+    );
+  }
+  const rawData = raw['data'] as Record<string, unknown> | null | undefined;
+  const rawRankedByTopic = rawData?.['rankedByTopic'];
+  if (
+    raw['artifact'] !== 'ranking' ||
+    typeof rawRankedByTopic !== 'object' ||
+    rawRankedByTopic === null
+  ) {
+    throw new Error(
+      'ranking artifact is malformed: missing required fields (artifact, data.rankedByTopic)'
+    );
+  }
+
   const size = options.size ?? DEFAULT_SIZE;
   const maxReferences = options.maxReferences ?? DEFAULT_MAX_REFERENCES;
   const stabilityMargin = options.stabilityMargin ?? 0;

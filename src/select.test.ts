@@ -169,6 +169,76 @@ test('references are populated when aggregation is provided, else warned + empty
   assert.ok(without.warnings.some((w) => w.includes('references omitted')));
 });
 
+// ── Issue #8: schemaVersion gate + structural validation ──────────────────────
+
+test('selectTop10 throws a clear error on wrong schemaVersion', () => {
+  const ranking = makeRanking({ ai: [] });
+  const bad = { ...ranking, schemaVersion: 'ardur-content-pipeline/v0' };
+  assert.throws(
+    () => selectTop10(bad as unknown as typeof ranking, null),
+    /schema mismatch/,
+  );
+});
+
+test('selectTop10 throws when schemaVersion is missing entirely', () => {
+  const ranking = makeRanking({ ai: [] });
+  const bad = { ...ranking } as Record<string, unknown>;
+  delete bad['schemaVersion'];
+  assert.throws(
+    () => selectTop10(bad as unknown as typeof ranking, null),
+    /schema mismatch/,
+  );
+});
+
+test('selectTop10 throws on wrong artifact type', () => {
+  const ranking = makeRanking({ ai: [] });
+  const bad = { ...ranking, artifact: 'aggregation' };
+  assert.throws(
+    () => selectTop10(bad as unknown as typeof ranking, null),
+    /malformed/,
+  );
+});
+
+test('selectTop10 throws when data.rankedByTopic is missing', () => {
+  const ranking = makeRanking({ ai: [] });
+  const bad = { ...ranking, data: { ...ranking.data, rankedByTopic: null } };
+  assert.throws(
+    () => selectTop10(bad as unknown as typeof ranking, null),
+    /malformed/,
+  );
+});
+
+// ── Issue #9: unionByCluster stable tie-break across topic key order ───────────
+
+test('unionByCluster: global board is byte-identical regardless of topic key insertion order', () => {
+  // Cluster "dup" appears in both topics with identical scores.  The winner
+  // must be the same (lexicographically smaller topic key) no matter which
+  // topic key appears first in the object literal.
+  const makeC = (topic: string) =>
+    makeCluster({ clusterId: 'dup', topic, topicLabel: topic, score: makeScore(5) });
+
+  const ab = selectTop10(makeRanking({ alpha: [makeC('alpha')], beta: [makeC('beta')] }), null, { size: 10 });
+  const ba = selectTop10(makeRanking({ beta: [makeC('beta')], alpha: [makeC('alpha')] }), null, { size: 10 });
+
+  assert.equal(ab.data.global.length, 1);
+  assert.equal(ba.data.global.length, 1);
+  // Both orderings produce the same topic winner (alpha < beta lexicographically).
+  assert.equal(ab.data.global[0]?.topic, 'alpha');
+  assert.equal(ba.data.global[0]?.topic, 'alpha');
+});
+
+test('unionByCluster: non-tied clusters are still resolved by compareClusters', () => {
+  // Cluster "dup" in beta has a higher score — beta's copy should win regardless.
+  const weak = makeCluster({ clusterId: 'dup', topic: 'alpha', topicLabel: 'Alpha', score: makeScore(3) });
+  const strong = makeCluster({ clusterId: 'dup', topic: 'beta', topicLabel: 'Beta', score: makeScore(7) });
+
+  const ab = selectTop10(makeRanking({ alpha: [weak], beta: [strong] }), null, { size: 10 });
+  const ba = selectTop10(makeRanking({ beta: [strong], alpha: [weak] }), null, { size: 10 });
+
+  assert.equal(ab.data.global[0]?.topic, 'beta');
+  assert.equal(ba.data.global[0]?.topic, 'beta');
+});
+
 test('deltas + carriedOver computed vs the previous global board', () => {
   const previous = makeTop10([
     makeTop10Entry({ clusterId: 'a1', rank: 1 }),
