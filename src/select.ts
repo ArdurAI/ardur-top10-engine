@@ -29,9 +29,15 @@ import type {
   RankedCluster,
   AggregationArtifact,
 } from '@ardurai/contracts';
-import { SCHEMA_VERSION, assertCompatibleArtifact } from '@ardurai/contracts';
+import { SCHEMA_VERSION, CONTRACT_REVISION, assertCompatibleArtifact } from '@ardurai/contracts';
 import { nextRefreshAt } from './cycle.ts';
-import { referencesFor, indexItems, DEFAULT_MAX_REFERENCES, type ItemsById } from './references.ts';
+import {
+  referencesFor,
+  referencesFromCluster,
+  indexItems,
+  DEFAULT_MAX_REFERENCES,
+  type ItemsById,
+} from './references.ts';
 import { computeDelta, computeStability, incumbentIds } from './stability.ts';
 
 export interface SelectionOptions {
@@ -161,7 +167,15 @@ function toEntry(
   maxReferences: number,
   itemsById: ItemsById,
 ): Top10Entry {
-  return {
+  // Rev 3: if the ranking engine pre-built references, use them all (uncapped).
+  // Display capping is the renderer's responsibility — data carries the full set.
+  // Fall back to memberIds resolution for rev 1/2 producers.
+  const references =
+    cluster.references !== undefined
+      ? referencesFromCluster(cluster.references)
+      : referencesFor(cluster, maxReferences, itemsById);
+
+  const entry: Top10Entry = {
     rank,
     clusterId: cluster.clusterId,
     topic: cluster.topic,
@@ -170,10 +184,17 @@ function toEntry(
     score: cluster.score,
     sourceQuality: cluster.sourceQuality,
     confidence: cluster.confidence,
-    references: referencesFor(cluster, maxReferences, itemsById),
+    references,
     delta: computeDelta({ clusterId: cluster.clusterId, rank }, previousBoard),
     carriedOver: previousIds.has(cluster.clusterId),
   };
+
+  // Rev 3: forward sourceDocIds for the full provenance trail.
+  if (cluster.sourceDocIds !== undefined) {
+    entry.sourceDocIds = cluster.sourceDocIds;
+  }
+
+  return entry;
 }
 
 /** Build a finished board (entries with ranks/deltas/refs) from raw clusters. */
@@ -239,13 +260,20 @@ export function selectTop10(
   const rankedByTopic = ranking.data.rankedByTopic ?? {};
   const warnings = [...ranking.warnings, ...gateWarnings];
 
-  // References need the aggregation's per-item metadata.
+  // References: Rev 3 clusters carry pre-built references from the ranking engine
+  // (RankedCluster.references). For rev 1/2 producers that omit the field, fall
+  // back to memberIds resolution which requires the AggregationArtifact.
+  const allClusters = Object.values(rankedByTopic).flat() as RankedCluster[];
+  const legacyClusters = allClusters.filter((c) => c.references === undefined);
+
   let itemsById: ItemsById = {};
   if (options.aggregation) {
     const allItems = Object.values(options.aggregation.data.itemsByTopic ?? {}).flat();
     itemsById = indexItems(allItems);
-  } else {
-    warnings.push('references omitted: no aggregation artifact provided to selectTop10');
+  } else if (legacyClusters.length > 0) {
+    warnings.push(
+      `references omitted for ${legacyClusters.length} legacy cluster(s): no aggregation artifact provided to selectTop10`,
+    );
   }
 
   // Identify the global/"all" source key, if the ranking already merged one.
@@ -298,6 +326,7 @@ export function selectTop10(
 
   return {
     schemaVersion: SCHEMA_VERSION,
+    contractRevision: CONTRACT_REVISION,
     artifact: 'top10',
     runId: options.runId ?? `top10:${ranking.cycle.id}`,
     upstreamRunId: ranking.runId,

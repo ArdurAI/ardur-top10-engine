@@ -20,7 +20,7 @@ export {
 export type { SelectionOptions } from './select.ts';
 
 // References (copyright-safe)
-export { indexItems, DEFAULT_MAX_REFERENCES } from './references.ts';
+export { indexItems, referencesFromCluster, DEFAULT_MAX_REFERENCES } from './references.ts';
 export type { ItemsById } from './references.ts';
 
 // URL safety

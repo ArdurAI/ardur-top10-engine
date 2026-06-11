@@ -148,7 +148,7 @@ test('artifact envelope is wired: ids, cycle, nextRefreshAt', () => {
   assert.equal(out.data.nextRefreshAt, CYCLE.windowEnd);
 });
 
-test('references are populated when aggregation is provided, else warned + empty', () => {
+test('references are populated when aggregation is provided, else warned + empty (rev 1/2 legacy)', () => {
   const items = [
     makeItem({ id: 'm1', clusterId: 'a1', url: 'https://reuters.com/m1' }),
     makeItem({
@@ -159,6 +159,7 @@ test('references are populated when aggregation is provided, else warned + empty
       url: 'https://bloomberg.com/m2',
     }),
   ];
+  // Rev 1/2 cluster: no `references` field — must fall back to aggregation
   const ranking = makeRanking({ ai: [ai('a1', 5, { memberIds: ['m1', 'm2'] })] });
 
   const withAgg = selectTop10(ranking, null, { aggregation: makeAggregation({ ai: items }) });
@@ -168,6 +169,68 @@ test('references are populated when aggregation is provided, else warned + empty
   const without = selectTop10(ranking, null);
   assert.deepEqual(without.data.global[0]?.references, []);
   assert.ok(without.warnings.some((w) => w.includes('references omitted')));
+});
+
+test('rev 3 cluster: references used directly, no aggregation needed, uncapped', () => {
+  // 12 pre-built refs from the ranking engine — all should survive (no 5-ref cap)
+  const revThreeRefs = Array.from({ length: 12 }, (_, i) => ({
+    source: `Src${i}`,
+    sourceDomain: `src${i}.com`,
+    tier: 'news' as const,
+    url: `https://src${i}.com/article`,
+    title: `Article ${i}`,
+    publishedAt: '2026-06-11T06:00:00Z',
+  }));
+  const cluster = ai('a1', 5, { references: revThreeRefs });
+  const ranking = makeRanking({ ai: [cluster] });
+
+  const out = selectTop10(ranking, null); // no aggregation — not needed for Rev 3
+  const entry = out.data.global[0];
+  assert.ok(entry);
+  assert.equal(entry.references.length, 12); // all 12, uncapped
+  assert.ok(!out.warnings.some((w) => w.includes('references omitted')));
+});
+
+test('rev 3 cluster: unsafe URLs in pre-built references are dropped', () => {
+  const refs = [
+    {
+      source: 'Safe',
+      sourceDomain: 'safe.com',
+      tier: 'news' as const,
+      url: 'https://safe.com/a',
+      title: 'Safe',
+      publishedAt: '2026-06-11T06:00:00Z',
+    },
+    {
+      source: 'Insecure',
+      sourceDomain: 'insecure.com',
+      tier: 'news' as const,
+      url: 'http://insecure.com/b', // non-https → dropped
+      title: 'Insecure',
+      publishedAt: '2026-06-11T06:00:00Z',
+    },
+  ];
+  const out = selectTop10(makeRanking({ ai: [ai('a1', 5, { references: refs })] }), null);
+  assert.equal(out.data.global[0]?.references.length, 1);
+  assert.equal(out.data.global[0]?.references[0]?.source, 'Safe');
+});
+
+test('rev 3 cluster: sourceDocIds forwarded to Top10Entry', () => {
+  const docIds = ['doc-aaa', 'doc-bbb', 'doc-ccc'];
+  const cluster = ai('a1', 5, { references: [], sourceDocIds: docIds });
+  const out = selectTop10(makeRanking({ ai: [cluster] }), null);
+  assert.deepEqual(out.data.global[0]?.sourceDocIds, docIds);
+});
+
+test('rev 3 cluster with no sourceDocIds: entry omits the field', () => {
+  // cluster.sourceDocIds is undefined (omitted)
+  const out = selectTop10(makeRanking({ ai: [ai('a1', 5, { references: [] })] }), null);
+  assert.ok(!('sourceDocIds' in (out.data.global[0] ?? {})));
+});
+
+test('contractRevision is stamped as CONTRACT_REVISION (3) in output', () => {
+  const out = selectTop10(makeRanking({ ai: [ai('a1', 1)] }), null);
+  assert.equal(out.contractRevision, 3);
 });
 
 // ── Issue #8: schemaVersion gate + structural validation ──────────────────────

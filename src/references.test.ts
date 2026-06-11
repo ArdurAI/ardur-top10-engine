@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { safePublicUrl } from './url.ts';
-import { referencesFor, indexItems } from './references.ts';
+import { referencesFor, referencesFromCluster, indexItems } from './references.ts';
 import { makeCluster, makeItem } from './fixtures.ts';
+import type { SourceRef } from '@ardurai/contracts';
 
 // --- url safety ---------------------------------------------------------------
 
@@ -115,4 +116,46 @@ test('referencesFor honors a cap of 0', () => {
   const items = [makeItem({ id: 'i1', url: 'https://x.com/1' })];
   const cluster = makeCluster({ clusterId: 'c1', memberIds: ['i1'] });
   assert.deepEqual(referencesFor(cluster, 0, indexItems(items)), []);
+});
+
+// --- referencesFromCluster (Rev 3 path) ----------------------------------------
+
+function makeRef(over: Partial<SourceRef> & { url: string }): SourceRef {
+  return {
+    source: 'Reuters',
+    sourceDomain: 'reuters.com',
+    tier: 'news',
+    title: 'Test article',
+    publishedAt: '2026-06-11T06:00:00Z',
+    ...over,
+  };
+}
+
+test('referencesFromCluster passes through all refs with safe URLs (no cap)', () => {
+  const refs = Array.from({ length: 12 }, (_, i) =>
+    makeRef({ url: `https://reuters.com/article-${i}`, title: `Art ${i}` }),
+  );
+  const out = referencesFromCluster(refs);
+  assert.equal(out.length, 12); // uncapped — all 12 pass through
+});
+
+test('referencesFromCluster drops refs with unsafe URLs', () => {
+  const refs = [
+    makeRef({ url: 'http://insecure.com/x' }), // non-https → dropped
+    makeRef({ url: 'https://ok.com/y' }),
+    makeRef({ url: 'https://127.0.0.1/z' }), // private IP → dropped
+  ];
+  const out = referencesFromCluster(refs);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]?.url, 'https://ok.com/y');
+});
+
+test('referencesFromCluster sanitizes URLs (strips tracking params)', () => {
+  const refs = [makeRef({ url: 'https://reuters.com/a?utm_source=x&id=7' })];
+  const out = referencesFromCluster(refs);
+  assert.equal(out[0]?.url, 'https://reuters.com/a?id=7');
+});
+
+test('referencesFromCluster returns [] for empty input', () => {
+  assert.deepEqual(referencesFromCluster([]), []);
 });
