@@ -21,6 +21,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
+    "test:package": "node scripts/package-smoke.mjs",
+    "prepack": "npm run build",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
@@ -39,7 +41,7 @@
     "url": "https://github.com/ArdurAI/ardur-top10-engine.git"
   },
   "dependencies": {
-    "@ardurai/contracts": "github:ArdurAI/ardur-contracts#4a47ec8d7302ad3b62a481f83acd7df79709ef79"
+    "@ardurai/contracts": "https://github.com/ArdurAI/ardur-contracts/archive/4a47ec8d7302ad3b62a481f83acd7df79709ef79.tar.gz"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
