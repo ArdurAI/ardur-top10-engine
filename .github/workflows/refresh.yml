@@ -1,0 +1,50 @@
+name: 6-Hour Intelligence Refresh
+
+# Orchestrates one full pipeline cycle every 6 hours (UTC-aligned):
+#   aggregate -> rank -> select Top-10 -> synthesize -> publish.
+#
+# SCAFFOLD ONLY: `npm run orchestrate` is stubbed. Wire it to the sibling
+# engines (lib import or CLI piping) before enabling on a schedule.
+
+on:
+  schedule:
+    # 00:00, 06:00, 12:00, 18:00 UTC — matches the cycle window boundaries.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Never run two cycles at once; let an in-flight cycle finish.
+  group: ardur-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Cost-guarded, pluggable provider. Default deterministic (zero-cost).
+      ARDUR_AI_PROVIDER: ${{ vars.ARDUR_AI_PROVIDER || 'deterministic' }}
+      ARDUR_AI_MAX_GENERATIONS: ${{ vars.ARDUR_AI_MAX_GENERATIONS || '20' }}
+      ARDUR_AI_TIMEOUT_MS: ${{ vars.ARDUR_AI_TIMEOUT_MS || '20000' }}
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+      OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL || 'minimax-m2.5:cloud' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run one pipeline cycle
+        run: npm run orchestrate
+      # Publishing step (open PR / push artifacts) is added when orchestrate is
+      # implemented — mirrors ardur.ai/main hourly-intelligence.yml, on 6h cadence.
