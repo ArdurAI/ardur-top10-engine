@@ -150,7 +150,10 @@ test('safePublicUrl: strips referrer and referer params', () => {
 });
 
 test('safePublicUrl: strips ipaddress param', () => {
-  assert.equal(safePublicUrl('https://reuters.com/a?ipaddress=1.2.3.4&id=1'), 'https://reuters.com/a?id=1');
+  assert.equal(
+    safePublicUrl('https://reuters.com/a?ipaddress=1.2.3.4&id=1'),
+    'https://reuters.com/a?id=1',
+  );
 });
 
 test('safePublicUrl: strips cookie and secret params', () => {
