@@ -393,6 +393,64 @@ test('constructor and toString topic keys are also rejected as reserved names', 
   assert.ok(Object.prototype.hasOwnProperty.call(out.data.top10ByTopic, 'ai'));
 });
 
+// ── Cross-stream headline dedup (round-4 live bug) ────────────────────────────
+
+test('cross-stream headline dedup: best-scoring copy kept, freed rank backfilled', () => {
+  // The pipeline assigns different clusterIds to the same story in different
+  // topic streams.  selectBoard must keep only the highest-scoring copy and
+  // backfill the freed slot with the next unique cluster.
+  const rlAI = ai('rl-ai', 10, { headline: 'RL-injection attack paper' });
+  const rlSec = sec('rl-sec', 9, { headline: 'RL-injection attack paper' });
+  const ghAI = ai('gh-ai', 7, { headline: 'GitHub Enterprise 3.21 released' });
+  const ghSec = sec('gh-sec', 6, { headline: 'GitHub Enterprise 3.21 released' });
+  const other1 = ai('other-1', 5);
+  const other2 = sec('other-2', 4);
+
+  const ranking = makeRanking({
+    ai: [rlAI, ghAI, other1],
+    security: [rlSec, ghSec, other2],
+  });
+  const out = selectTop10(ranking, null, { size: 4 });
+
+  const board = out.data.global;
+  const headlines = board.map((e) => e.headline);
+  const clusterIds = board.map((e) => e.clusterId);
+
+  // No duplicate headlines anywhere on the board.
+  assert.equal(new Set(headlines).size, 4, 'all four board headlines are unique');
+  assert.equal(board.length, 4, 'board is fully filled after backfill');
+  // Higher-scoring representative survives; lower-scoring duplicate is dropped.
+  assert.ok(clusterIds.includes('rl-ai'), 'rl-ai (score 10) kept');
+  assert.ok(!clusterIds.includes('rl-sec'), 'rl-sec (score 9, dup headline) dropped');
+  assert.ok(clusterIds.includes('gh-ai'), 'gh-ai (score 7) kept');
+  assert.ok(!clusterIds.includes('gh-sec'), 'gh-sec (score 6, dup headline) dropped');
+  // Freed ranks were backfilled with the next unique clusters.
+  assert.ok(
+    clusterIds.includes('other-1') || clusterIds.includes('other-2'),
+    'freed rank backfilled',
+  );
+});
+
+test('cross-stream headline dedup preserves per-board independence (per-topic boards unaffected)', () => {
+  // Headlines appearing in multiple topic streams should only be deduped within
+  // each board; the per-topic "ai" board is built solely from the "ai" stream
+  // and contains no cross-topic duplicates to remove.
+  const rlAI = ai('rl-ai', 10, { headline: 'RL-injection attack paper' });
+  const rlSec = sec('rl-sec', 9, { headline: 'RL-injection attack paper' });
+  const ranking = makeRanking({ ai: [rlAI], security: [rlSec] });
+  const out = selectTop10(ranking, null, { size: 10 });
+
+  // Per-topic "ai" board: one entry — rl-ai.
+  assert.equal(out.data.top10ByTopic['ai']?.length, 1);
+  assert.equal(out.data.top10ByTopic['ai']?.[0]?.clusterId, 'rl-ai');
+  // Per-topic "security" board: one entry — rl-sec.
+  assert.equal(out.data.top10ByTopic['security']?.length, 1);
+  assert.equal(out.data.top10ByTopic['security']?.[0]?.clusterId, 'rl-sec');
+  // Global board: only one entry (the better-scoring copy).
+  assert.equal(out.data.global.length, 1);
+  assert.equal(out.data.global[0]?.clusterId, 'rl-ai');
+});
+
 test('deltas + carriedOver computed vs the previous global board', () => {
   const previous = makeTop10([
     makeTop10Entry({ clusterId: 'a1', rank: 1 }),

@@ -132,8 +132,9 @@ export function compareClusters(a: RankedCluster, b: RankedCluster): number {
 }
 
 /**
- * Membership selection with optional incumbent hysteresis and category cap, then
- * honest ordering. Returns the chosen clusters in final board order.
+ * Membership selection with optional incumbent hysteresis, category cap, and
+ * headline dedup, then honest ordering. Returns the chosen clusters in final
+ * board order.
  */
 function selectBoard(
   clusters: readonly RankedCluster[],
@@ -161,24 +162,40 @@ function selectBoard(
   });
 
   // Greedy fill honoring the per-category cap.
+  // seenClusterIds: defensive guard against duplicate clusterId values in input.
+  // seenHeadlines: cross-stream same-story dedup — the pipeline may assign different
+  //   clusterIds to the same story across topic streams; normalised headline is the
+  //   content signal that catches those duplicates before they reach the board.
   const chosen: RankedCluster[] = [];
   const perCategory = new Map<string, number>();
+  const seenClusterIds = new Set<string>();
+  const seenHeadlines = new Set<string>();
   const overflow: RankedCluster[] = [];
   for (const c of bySelection) {
     if (chosen.length >= size) break;
+    if (seenClusterIds.has(c.clusterId)) continue;
+    const hk = c.headline.trim().toLowerCase();
+    if (seenHeadlines.has(hk)) continue;
     const count = perCategory.get(c.topic) ?? 0;
     if (count >= maxPerCategory) {
       overflow.push(c);
       continue;
     }
     chosen.push(c);
+    seenClusterIds.add(c.clusterId);
+    seenHeadlines.add(hk);
     perCategory.set(c.topic, count + 1);
   }
   // Relax pass: if the cap left the board under-filled, top up by selection order.
   if (chosen.length < size) {
     for (const c of overflow) {
       if (chosen.length >= size) break;
+      if (seenClusterIds.has(c.clusterId)) continue;
+      const hk = c.headline.trim().toLowerCase();
+      if (seenHeadlines.has(hk)) continue;
       chosen.push(c);
+      seenClusterIds.add(c.clusterId);
+      seenHeadlines.add(hk);
     }
   }
 
