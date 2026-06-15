@@ -206,10 +206,7 @@ test('safePublicUrl: rejects trailing-dot .internal. FQDN', () => {
 
 test('safePublicUrl: accepts public hostname with trailing dot stripped', () => {
   // "reuters.com." is valid FQDN notation — strip the dot and proceed normally.
-  assert.equal(
-    safePublicUrl('https://reuters.com./article'),
-    'https://reuters.com/article',
-  );
+  assert.equal(safePublicUrl('https://reuters.com./article'), 'https://reuters.com/article');
 });
 
 // ── Issue #19: over-broad tracking-param substring match ─────────────────────────
@@ -233,10 +230,7 @@ test('safePublicUrl: "phone" exact-only — preserves "telephone"', () => {
 });
 
 test('safePublicUrl: "user" exact-only — preserves "guser"', () => {
-  assert.equal(
-    safePublicUrl('https://reuters.com/a?guser=x'),
-    'https://reuters.com/a?guser=x',
-  );
+  assert.equal(safePublicUrl('https://reuters.com/a?guser=x'), 'https://reuters.com/a?guser=x');
   // bare "user" key is still stripped
   assert.equal(safePublicUrl('https://reuters.com/a?user=alice'), 'https://reuters.com/a');
 });

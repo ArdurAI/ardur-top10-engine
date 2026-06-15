@@ -143,8 +143,7 @@ test('cycle.id mismatch in aggregation artifact produces status=degraded (not pu
     windowEnd: '2026-06-11T06:00:00.000Z',
   };
   const { runners } = makeRunners({
-    aggregate: async () =>
-      makeAggregation({ ai: [] }, { cycle: STALE_CYCLE }),
+    aggregate: async () => makeAggregation({ ai: [] }, { cycle: STALE_CYCLE }),
   });
   const res = await runCycle(runners, { now: NOW });
   assert.equal(res.status, 'degraded');

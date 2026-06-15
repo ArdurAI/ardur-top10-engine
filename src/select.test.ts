@@ -259,7 +259,10 @@ test('selectTop10 rejects rankedByTopic:null via Tier-2 Zod gate (issue #22)', (
   // rejects structurally invalid input so upstream can diagnose the upstream bug.
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking, data: { ...ranking.data, rankedByTopic: null } };
-  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /ZodError|Expected object/);
+  assert.throws(
+    () => selectTop10(bad as unknown as typeof ranking, null),
+    /ZodError|Expected object/,
+  );
 });
 
 // ── Issue #9: unionByCluster stable tie-break across topic key order ───────────
