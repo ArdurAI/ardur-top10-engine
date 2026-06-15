@@ -8,9 +8,9 @@
  * That determinism is what makes a re-run of a `cycle.id` idempotent
  * (docs/research-notes.md §2). No I/O, no wall-clock reads.
  *
- * Tie-breaking order (issue #2, documented + tested):
- *   total score → corroboration → recency (latestPublishedAt) → distinct domains
- *   → stable clusterId.
+ * Tie-breaking order (spec §4, documented + tested):
+ *   total score → confidence (high>medium>low) → corroboration → recency (latestPublishedAt)
+ *   → distinct domains → stable clusterId.
  *
  * Category balancing: the global board caps how many slots any one category
  * (topic) may hold, so a single category cannot crowd out the board; if the cap
@@ -30,6 +30,7 @@ import type {
   AggregationArtifact,
 } from '@ardurai/contracts';
 import { SCHEMA_VERSION, CONTRACT_REVISION, assertCompatibleArtifact } from '@ardurai/contracts';
+import { parseRankingArtifact } from '@ardurai/contracts/zod';
 import { nextRefreshAt } from './cycle.ts';
 import {
   referencesFor,
@@ -104,9 +105,15 @@ function toFinite(v: number): number {
   return Number.isFinite(v) ? v : -Infinity;
 }
 
+/** Map Confidence string to a numeric rank for tie-breaking (spec §4). */
+const CONFIDENCE_RANK: Record<string, number> = { high: 2, medium: 1, low: 0 };
+function confidenceRank(c: RankedCluster): number {
+  return CONFIDENCE_RANK[c.confidence] ?? 0;
+}
+
 /**
  * Total-order comparator over the honest score fields. Returns < 0 if `a` should
- * rank ahead of `b`. Tie-break order per issue #2; final `clusterId` tie-break
+ * rank ahead of `b`. Tie-break order per spec §4; final `clusterId` tie-break
  * guarantees a deterministic total order (no reliance on sort stability).
  *
  * All numeric fields are normalised through `toFinite` so NaN or non-finite
@@ -116,6 +123,9 @@ export function compareClusters(a: RankedCluster, b: RankedCluster): number {
   const ta = toFinite(a.score.total);
   const tb = toFinite(b.score.total);
   if (ta !== tb) return tb - ta;
+  const cfa = confidenceRank(a);
+  const cfb = confidenceRank(b);
+  if (cfa !== cfb) return cfb - cfa; // higher confidence first (spec §4)
   const ca = toFinite(a.score.corroboration);
   const cb = toFinite(b.score.corroboration);
   if (ca !== cb) return cb - ca;
@@ -174,8 +184,10 @@ function selectBoard(
   for (const c of bySelection) {
     if (chosen.length >= size) break;
     if (seenClusterIds.has(c.clusterId)) continue;
-    const hk = c.headline.trim().toLowerCase();
-    if (seenHeadlines.has(hk)) continue;
+    // Guard non-string headline (CWE-20); empty headlines skip dedup so distinct
+    // clusters with missing/blank headlines aren't silently collapsed into one slot.
+    const hk = typeof c.headline === 'string' ? c.headline.trim().toLowerCase() : '';
+    if (hk !== '' && seenHeadlines.has(hk)) continue;
     const count = perCategory.get(c.topic) ?? 0;
     if (count >= maxPerCategory) {
       overflow.push(c);
@@ -183,7 +195,7 @@ function selectBoard(
     }
     chosen.push(c);
     seenClusterIds.add(c.clusterId);
-    seenHeadlines.add(hk);
+    if (hk !== '') seenHeadlines.add(hk);
     perCategory.set(c.topic, count + 1);
   }
   // Relax pass: if the cap left the board under-filled, top up by selection order.
@@ -191,11 +203,11 @@ function selectBoard(
     for (const c of overflow) {
       if (chosen.length >= size) break;
       if (seenClusterIds.has(c.clusterId)) continue;
-      const hk = c.headline.trim().toLowerCase();
-      if (seenHeadlines.has(hk)) continue;
+      const hk = typeof c.headline === 'string' ? c.headline.trim().toLowerCase() : '';
+      if (hk !== '' && seenHeadlines.has(hk)) continue;
       chosen.push(c);
       seenClusterIds.add(c.clusterId);
-      seenHeadlines.add(hk);
+      if (hk !== '') seenHeadlines.add(hk);
     }
   }
 
@@ -295,13 +307,25 @@ export function selectTop10(
   previous: Top10Artifact | null,
   options: SelectionOptions = {},
 ): Top10Artifact {
-  // Gate before stamp: reject incompatible upstream artifacts (ARCHITECTURE §5).
+  // Tier-1: envelope gate (ARCHITECTURE §5).
   const { warnings: gateWarnings } = assertCompatibleArtifact(ranking as unknown, 'ranking');
 
-  const size = options.size ?? DEFAULT_SIZE;
+  // Tier-2: Zod structural validation — catches NaN-as-null, missing required fields,
+  // and type mismatches (including non-string headline) on the production library path
+  // as well as the CLI path (issue #22, recurring trust-boundary weak-spot).
+  parseRankingArtifact(ranking as unknown);
+
+  // Validate numeric options — NaN/Infinity bypass the size cap and under-fill warning.
+  const rawSize = options.size ?? DEFAULT_SIZE;
+  const size = Number.isFinite(rawSize) && rawSize > 0 ? Math.floor(rawSize) : DEFAULT_SIZE;
   const maxReferences = options.maxReferences ?? DEFAULT_MAX_REFERENCES;
-  const stabilityMargin = options.stabilityMargin ?? 0;
-  const maxPerCategory = options.maxPerCategory ?? Math.max(1, Math.ceil(size / 3));
+  const rawMargin = options.stabilityMargin ?? 0;
+  const stabilityMargin = Number.isFinite(rawMargin) && rawMargin >= 0 ? rawMargin : 0;
+  const rawMaxPer = options.maxPerCategory;
+  const maxPerCategory =
+    rawMaxPer !== undefined && Number.isFinite(rawMaxPer) && rawMaxPer > 0
+      ? Math.floor(rawMaxPer)
+      : Math.max(1, Math.ceil(size / 3));
 
   const rawRankedByTopic = ranking.data.rankedByTopic ?? {};
   const warnings = [...ranking.warnings, ...gateWarnings];

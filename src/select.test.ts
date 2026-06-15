@@ -254,13 +254,12 @@ test('selectTop10 throws SchemaVersionError on wrong artifact type', () => {
   assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), SchemaVersionError);
 });
 
-test('selectTop10 returns empty boards when data.rankedByTopic is null (graceful)', () => {
+test('selectTop10 rejects rankedByTopic:null via Tier-2 Zod gate (issue #22)', () => {
+  // Prior to #22 this gracefully degraded to empty boards; Tier-2 now correctly
+  // rejects structurally invalid input so upstream can diagnose the upstream bug.
   const ranking = makeRanking({ ai: [] });
   const bad = { ...ranking, data: { ...ranking.data, rankedByTopic: null } };
-  const result = selectTop10(bad as unknown as typeof ranking, null);
-  assert.equal(result.artifact, 'top10');
-  assert.deepEqual(result.data.global, []);
-  assert.deepEqual(result.data.top10ByTopic, {});
+  assert.throws(() => selectTop10(bad as unknown as typeof ranking, null), /ZodError|Expected object/);
 });
 
 // ── Issue #9: unionByCluster stable tie-break across topic key order ───────────
@@ -332,15 +331,15 @@ test('compareClusters: NaN corroboration treated as -Infinity', () => {
   assert.ok(compareClusters(highCorr, nanCorr) < 0, 'finite corroboration > NaN');
 });
 
-test('selectTop10: cluster with NaN score.total sorts last, boards still valid', () => {
+test('selectTop10: NaN score.total is rejected by Tier-2 Zod gate (issue #22)', () => {
+  // Zod 3.25+ z.number() rejects NaN at the library boundary; toFinite is a
+  // belt-and-suspenders guard for any pre-Zod path (CLI handles NaN via Zod at input).
   const nanCluster = { ...ai('nan-c', 0), score: { ...makeScore(0), total: NaN } } as RankedCluster;
   const good = ai('good-c', 5);
-  const out = selectTop10(makeRanking({ ai: [nanCluster, good] }), null);
-  // good must rank first; NaN → -Infinity means it ranks last
-  assert.equal(out.data.global[0]?.clusterId, 'good-c');
-  assert.equal(out.data.global[1]?.clusterId, 'nan-c');
-  // all ranks are finite positive integers
-  assert.ok(out.data.global.every((e) => Number.isFinite(e.rank) && e.rank > 0));
+  assert.throws(
+    () => selectTop10(makeRanking({ ai: [nanCluster, good] }), null),
+    /ZodError|nan|Expected number/,
+  );
 });
 
 // ── Issue #13: CWE-915 — reserved topic keys must not corrupt prototype chain ──
@@ -465,4 +464,85 @@ test('deltas + carriedOver computed vs the previous global board', () => {
   assert.deepEqual(byId['a3']?.delta, { previousRank: null, movement: 'new' });
   assert.equal(byId['a2']?.carriedOver, true);
   assert.equal(byId['a3']?.carriedOver, false);
+});
+
+// ── Issue #20: confidence tie-break ─────────────────────────────────────────────
+
+test('compareClusters: high confidence ranks before medium, medium before low', () => {
+  const high = ai('h', 5, { score: makeScore(5), confidence: 'high' });
+  const med = ai('m', 5, { score: makeScore(5), confidence: 'medium' });
+  const low = ai('l', 5, { score: makeScore(5), confidence: 'low' });
+  assert.ok(compareClusters(high, med) < 0, 'high before medium');
+  assert.ok(compareClusters(med, low) < 0, 'medium before low');
+  assert.ok(compareClusters(high, low) < 0, 'high before low');
+});
+
+test('selectTop10: confidence tie-break applied within equal-total board', () => {
+  // All same total; confidence should determine ordering.
+  const clusters = [
+    ai('c-low', 5, { score: makeScore(5), confidence: 'low' }),
+    ai('c-high', 5, { score: makeScore(5), confidence: 'high' }),
+    ai('c-med', 5, { score: makeScore(5), confidence: 'medium' }),
+  ];
+  const out = selectTop10(makeRanking({ ai: clusters }), null, { size: 3 });
+  const ids = (out.data.top10ByTopic['ai'] ?? []).map((e) => e.clusterId);
+  assert.deepEqual(ids, ['c-high', 'c-med', 'c-low']);
+});
+
+// ── Issue #21: empty/whitespace headline dedup ───────────────────────────────────
+
+test('selectTop10: clusters with empty headlines are not collapsed into one slot', () => {
+  // Three clusters with blank headlines should all appear (no false dedup).
+  const clusters = [
+    ai('a', 10, { headline: '' }),
+    ai('b', 9, { headline: '   ' }),
+    ai('c', 8, { headline: '\t' }),
+  ];
+  const out = selectTop10(makeRanking({ ai: clusters }), null, { size: 5 });
+  assert.equal((out.data.top10ByTopic['ai'] ?? []).length, 3);
+});
+
+test('selectTop10: whitespace headline not deduped against real headline', () => {
+  const clusters = [
+    ai('has-headline', 10, { headline: 'Real story' }),
+    ai('blank', 9, { headline: '' }),
+  ];
+  const out = selectTop10(makeRanking({ ai: clusters }), null, { size: 5 });
+  assert.equal((out.data.top10ByTopic['ai'] ?? []).length, 2);
+});
+
+// ── Issue #22: non-string headline does not crash; Tier-2 Zod on library path ────
+
+test('selectTop10: Zod tier-2 gate rejects non-string headline on library path', () => {
+  const cluster = makeCluster({ clusterId: 'c1' });
+  (cluster as unknown as Record<string, unknown>).headline = null;
+  const ranking = makeRanking({ ai: [cluster] });
+  // Zod validation in selectTop10 should throw rather than crash with a TypeError.
+  assert.throws(() => selectTop10(ranking, null), /headline|ZodError|validation/i);
+});
+
+// ── Issue #24: NaN SelectionOptions numerics ─────────────────────────────────────
+
+test('selectTop10: NaN size falls back to DEFAULT_SIZE and still caps the board', () => {
+  const clusters = Array.from({ length: 20 }, (_, i) => ai(`c${i}`, 100 - i));
+  const out = selectTop10(makeRanking({ ai: clusters }), null, { size: NaN });
+  assert.equal(out.data.top10ByTopic['ai']?.length, 10); // cap enforced, not bypassed
+});
+
+test('selectTop10: NaN stabilityMargin falls back to 0 (no hysteresis)', () => {
+  // Providing NaN margin should not crash and should behave like margin=0.
+  const clusters = [ai('a', 10), ai('b', 9)];
+  assert.doesNotThrow(() =>
+    selectTop10(makeRanking({ ai: clusters }), null, { stabilityMargin: NaN }),
+  );
+});
+
+test('selectTop10: NaN maxPerCategory falls back to default (size/3)', () => {
+  const clusters = [ai('a1', 10), ai('a2', 9), ai('a3', 8), sec('s1', 7)];
+  // Should not crash; board should be populated.
+  const out = selectTop10(makeRanking({ ai: clusters, security: [sec('s1', 7)] }), null, {
+    size: 4,
+    maxPerCategory: NaN,
+  });
+  assert.ok(out.data.global.length > 0);
 });

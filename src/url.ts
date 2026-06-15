@@ -60,13 +60,13 @@ const TRACKING_PARAM_FRAGMENTS: readonly string[] = [
   // Session / auth / PII markers (from FORBIDDEN_METRIC_KEY_FRAGMENTS)
   'session',
   'sessionid',
-  'sid',
+  'sid=',
   'token',
   'secret',
   'cookie',
   'email',
-  'phone',
-  'user',
+  'phone=',
+  'user=',
   'userid',
   'visitorid',
   'deviceid',
@@ -109,7 +109,11 @@ export function safePublicUrl(raw: string | null | undefined): string | null {
   // HTTPS only — copyright-safe references link to public publisher pages.
   if (url.protocol !== 'https:') return null;
 
-  const host = url.hostname.toLowerCase();
+  // Strip trailing dot: FQDN notation (e.g. "localhost.") must not bypass host guards,
+  // and must not appear in the normalized output URL (canonical form has no trailing dot).
+  const rawHost = url.hostname.toLowerCase();
+  const host = rawHost.endsWith('.') ? rawHost.slice(0, -1) : rawHost;
+  if (host !== rawHost) url.hostname = host; // normalize URL object to strip the dot
   if (!isPublicHost(host)) return null;
 
   // Reject any URL carrying userinfo. Legitimate publisher pages never have

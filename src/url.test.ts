@@ -189,3 +189,54 @@ test('safePublicUrl: rejects bare decimal IP 2130706433 (=127.0.0.1)', () => {
 test('safePublicUrl: rejects bare hex 0xc0a80101 (=192.168.1.1)', () => {
   assert.equal(safePublicUrl('https://0xc0a80101/page'), null);
 });
+
+// ── Issue #18: trailing-dot FQDN bypass ─────────────────────────────────────────
+
+test('safePublicUrl: rejects trailing-dot localhost. (FQDN notation)', () => {
+  assert.equal(safePublicUrl('https://localhost./article'), null);
+});
+
+test('safePublicUrl: rejects trailing-dot .local. FQDN', () => {
+  assert.equal(safePublicUrl('https://myservice.local./article'), null);
+});
+
+test('safePublicUrl: rejects trailing-dot .internal. FQDN', () => {
+  assert.equal(safePublicUrl('https://api.internal./v1'), null);
+});
+
+test('safePublicUrl: accepts public hostname with trailing dot stripped', () => {
+  // "reuters.com." is valid FQDN notation — strip the dot and proceed normally.
+  assert.equal(
+    safePublicUrl('https://reuters.com./article'),
+    'https://reuters.com/article',
+  );
+});
+
+// ── Issue #19: over-broad tracking-param substring match ─────────────────────────
+
+test('safePublicUrl: "sid" exact-only — preserves "considered", "inside", "subsidiary"', () => {
+  assert.equal(
+    safePublicUrl('https://reuters.com/a?considered=true&inside=yes&subsidiary=acme'),
+    'https://reuters.com/a?considered=true&inside=yes&subsidiary=acme',
+  );
+  // bare "sid" key is still stripped
+  assert.equal(safePublicUrl('https://reuters.com/a?sid=abc'), 'https://reuters.com/a');
+});
+
+test('safePublicUrl: "phone" exact-only — preserves "telephone"', () => {
+  assert.equal(
+    safePublicUrl('https://reuters.com/a?telephone=1234'),
+    'https://reuters.com/a?telephone=1234',
+  );
+  // bare "phone" key is still stripped
+  assert.equal(safePublicUrl('https://reuters.com/a?phone=555'), 'https://reuters.com/a');
+});
+
+test('safePublicUrl: "user" exact-only — preserves "guser"', () => {
+  assert.equal(
+    safePublicUrl('https://reuters.com/a?guser=x'),
+    'https://reuters.com/a?guser=x',
+  );
+  // bare "user" key is still stripped
+  assert.equal(safePublicUrl('https://reuters.com/a?user=alice'), 'https://reuters.com/a');
+});

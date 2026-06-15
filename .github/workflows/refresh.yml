@@ -21,8 +21,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  # pull-requests: write — re-enable when the publish step is wired up
 
 jobs:
   cycle:
@@ -33,10 +33,9 @@ jobs:
       ARDUR_AI_PROVIDER: ${{ vars.ARDUR_AI_PROVIDER || 'deterministic' }}
       ARDUR_AI_MAX_GENERATIONS: ${{ vars.ARDUR_AI_MAX_GENERATIONS || '20' }}
       ARDUR_AI_TIMEOUT_MS: ${{ vars.ARDUR_AI_TIMEOUT_MS || '20000' }}
-      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
       OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL || 'minimax-m2.5:cloud' }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
+      # OLLAMA_API_KEY / OPENAI_API_KEY: restore when runner wiring is live
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.3

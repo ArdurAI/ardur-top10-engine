@@ -547,6 +547,24 @@ function main(): void {
     );
   }
 
+  // Stamp provider meta so pipeline consumers can identify the AI backend used.
+  const validProviders = ['deterministic', 'ollama', 'openai'] as const;
+  type ValidProvider = (typeof validProviders)[number];
+  if (validProviders.includes(args.provider as ValidProvider)) {
+    const model =
+      args.provider === 'ollama'
+        ? (process.env['OLLAMA_MODEL'] ?? 'unknown')
+        : args.provider === 'openai'
+          ? (process.env['OPENAI_MODEL'] ?? 'unknown')
+          : 'deterministic';
+    top10.provider = {
+      provider: args.provider as ValidProvider,
+      model,
+      status: 'generated',
+      generatedAt: args.now ?? top10.generatedAt,
+    };
+  }
+
   writeOutput(JSON.stringify(top10, null, 2) + '\n', args.out);
 }
 

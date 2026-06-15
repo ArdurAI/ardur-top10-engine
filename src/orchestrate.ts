@@ -124,23 +124,27 @@ export async function runCycle(
     return { cycle, status: 'failed', warnings, nextRefreshAt: next };
   }
 
-  // Soft cycle-consistency checks (don't fail the cycle, but flag drift).
+  // Soft cycle-consistency checks: mismatch is non-fatal but degrades the publish
+  // so monitoring can detect cross-engine drift (issue #23).
+  const mismatchWarnings: string[] = [];
   for (const [name, art] of [
     ['aggregation', aggregation],
     ['ranking', ranking],
     ['top10', top10],
   ] as const) {
     if (art.cycle.id !== cycle.id) {
-      warnings.push(`${name} cycle mismatch: expected ${cycle.id}, got ${art.cycle.id}`);
+      mismatchWarnings.push(`${name} cycle mismatch: expected ${cycle.id}, got ${art.cycle.id}`);
     }
   }
+  warnings.push(...mismatchWarnings);
 
-  // Upstream non-fatal warnings classify the published cycle as degraded.
+  // Upstream non-fatal warnings + cycle mismatches classify the published cycle as degraded.
   const upstreamWarnings = [
     ...aggregation.warnings,
     ...ranking.warnings,
     ...top10.warnings,
     ...articles.warnings,
+    ...mismatchWarnings,
   ];
 
   // --- Publish all-or-nothing. -------------------------------------------------

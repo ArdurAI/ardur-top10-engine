@@ -1,7 +1,7 @@
 {
   "name": "@ardurai/top10-engine",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "description": "Top-10 selection and 6-hour refresh orchestration for the Ardur AI content pipeline",
   "license": "MIT",
   "type": "module",

@@ -56,7 +56,7 @@ sequenceDiagram
 
 ## 3. Data schemas
 
-Authoritative types in [`../src/contracts.ts`](../src/contracts.ts).
+Authoritative types in the `@ardurai/contracts` package (adopted; not vendored locally).
 
 ### `Top10Entry`
 `rank` (1..10), `clusterId`, `topic`/`topicLabel`, `headline`, `score`
@@ -78,13 +78,16 @@ attribution metadata only; never article body.
   de-duplicated by `clusterId`.
 - **References**: from each cluster's members, keep up to `maxReferences`
   (default 5) distinct `(source, title)` pairs, normalized to safe public URLs.
+  Rev-3 ranking artifacts carry pre-built references; the data layer forwards the
+  full set and delegates display capping to the renderer.
 - **Deltas**: compare each entry's `clusterId` to the previous cycle's Top-10 →
   `movement ∈ {new, up, down, same}` and `carriedOver`.
 - **Stability / anti-churn**: optional `stabilityMargin` hysteresis retains an
   incumbent when a challenger only marginally outscores it, so the list does not
   thrash every 6 hours. `churnRate` = fraction of slots replaced vs previous cycle.
-- **Tie-breaking**: higher `confidence`, then `corroboration`, then more recent
-  `latestPublishedAt`.
+- **Tie-breaking**: total score, then higher `confidence` (high > medium > low),
+  then `corroboration`, then more recent `latestPublishedAt`, then `distinctDomains`,
+  then stable `clusterId` (lexicographic).
 
 ## 5. The 6-hour refresh orchestration
 

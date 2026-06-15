@@ -133,3 +133,20 @@ test('two runs of the same cycle produce identical published top10 (deterministi
   await runCycle(b.runners, { now: NOW });
   assert.deepEqual(a.calls.published?.top10, b.calls.published?.top10);
 });
+
+// ── Issue #23: cycle.id mismatch must produce status=degraded ───────────────────
+
+test('cycle.id mismatch in aggregation artifact produces status=degraded (not published)', async () => {
+  const STALE_CYCLE = {
+    id: '2026-06-11T00:00:00.000Z',
+    windowStart: '2026-06-11T00:00:00.000Z',
+    windowEnd: '2026-06-11T06:00:00.000Z',
+  };
+  const { runners } = makeRunners({
+    aggregate: async () =>
+      makeAggregation({ ai: [] }, { cycle: STALE_CYCLE }),
+  });
+  const res = await runCycle(runners, { now: NOW });
+  assert.equal(res.status, 'degraded');
+  assert.ok(res.warnings.some((w) => w.includes('cycle mismatch')));
+});
