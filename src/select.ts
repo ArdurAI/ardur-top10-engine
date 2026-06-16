@@ -21,6 +21,7 @@
  * within the board always uses the honest comparator.
  */
 
+import { createHash } from 'node:crypto';
 import type {
   RankingArtifact,
   Top10Artifact,
@@ -28,6 +29,8 @@ import type {
   Top10Entry,
   RankedCluster,
   AggregationArtifact,
+  SignalLink,
+  SourceRef,
 } from '@ardurai/contracts';
 import { SCHEMA_VERSION, CONTRACT_REVISION, assertCompatibleArtifact } from '@ardurai/contracts';
 import { parseRankingArtifact } from '@ardurai/contracts/zod';
@@ -40,6 +43,139 @@ import {
   type ItemsById,
 } from './references.ts';
 import { computeDelta, computeStability, incumbentIds } from './stability.ts';
+
+// ---------------------------------------------------------------------------
+// Rev 4: signalId + summary helpers
+// ---------------------------------------------------------------------------
+
+/** Stable 8-char hex prefix of SHA-256(headline). Survives re-aggregation. */
+function computeSignalId(headline: string): string {
+  return createHash('sha256').update(headline).digest('hex').slice(0, 8);
+}
+
+const STOP_WORDS_SET = new Set([
+  'a','an','the','and','or','but','in','on','at','to','for','of','with',
+  'is','it','its','as','are','was','by','from','that','this','be','has',
+  'have','had','not','do','did',
+]);
+
+function contentWordsOf(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase().split(/\W+/).filter((w) => w.length > 2 && !STOP_WORDS_SET.has(w)),
+  );
+}
+
+function wordOverlapRatio(a: string, b: string): number {
+  const wa = contentWordsOf(a);
+  const wb = contentWordsOf(b);
+  if (wa.size === 0) return 0;
+  let shared = 0;
+  for (const w of wa) if (wb.has(w)) shared++;
+  return shared / wa.size;
+}
+
+const VERSION_RE = /v\d+[\d.]*(?:-rc[\d.]*|-alpha[\d.]*|-beta[\d.]*)?/i;
+
+/**
+ * Deterministic one-sentence summary from headline + references. 0 AI tokens.
+ * Mirrors the five-archetype logic in scripts/ds-adapter.ts but operates on
+ * SourceRef[] (no EngineFact — those are in the aggregation artifact, not here).
+ */
+function summarizeForDs(headline: string, refs: SourceRef[]): string {
+  const h = headline.trim();
+
+  // Pattern A: Release notes
+  const releaseRef = refs.find((r) => /^release notes from\s/i.test(r.source));
+  if (releaseRef && VERSION_RE.test(h)) {
+    const project = releaseRef.source.replace(/^release notes from\s+/i, '').trim();
+    const versions = refs.map((r) => { const m = r.title.match(VERSION_RE); return m?.[0] ?? null; })
+      .filter(Boolean) as string[];
+    const uniq = [...new Set(versions)];
+    if (uniq.length === 1) return `${project} ${uniq[0]} patch release.`;
+    const [main, ...rest] = uniq;
+    return `${project} ships ${main} alongside ${rest.join(', ')}.`;
+  }
+
+  // Pattern B: Podcast
+  if (/^podcast:/i.test(h)) {
+    const clean = h.replace(/^podcast:\s*/i, '').trim();
+    return clean.endsWith('.') ? clean : clean + '.';
+  }
+
+  // Pattern C: Quote
+  if (/^quoting\s+/i.test(h)) {
+    const who = h.replace(/^quoting\s+/i, '').trim();
+    const src = refs[0]?.source ?? 'A practitioner';
+    return `${src} surfaces a notable quote from ${who}.`;
+  }
+
+  // Pattern D: Rich headline with quantifier
+  const hasQuantifier = /\d|\b(twice|triple|double|half|percent|billion|million|thousand|×|fold)\b/i.test(h);
+  if (hasQuantifier && h.length <= 90) {
+    return h.endsWith('.') ? h : h + '.';
+  }
+
+  // Pattern E: Alt reference title
+  const altTitles = refs
+    .map((r) => r.title.trim())
+    .filter((t) => t !== h && t.length > 15 && wordOverlapRatio(h, t) < 0.75);
+  if (altTitles.length > 0) {
+    const best = altTitles[0]!;
+    if (h.length <= 50) {
+      const t = best.length > 90 ? best.slice(0, 87) + '…' : best;
+      return t.endsWith('.') ? t : t + '.';
+    }
+    const hTrunc = h.length <= 70 ? h : h.slice(0, h.lastIndexOf(' ', 67) || 67) + '…';
+    const altTrunc = best.length > 65 ? best.slice(0, 62) + '…' : best;
+    return `${hTrunc}; ${altTrunc}.`;
+  }
+
+  // Pattern F: Fallback
+  const tidy = h.length > 120 ? h.slice(0, h.lastIndexOf(' ', 117)) + '…' : h;
+  return tidy.endsWith('.') ? tidy : tidy + '.';
+}
+
+// ---------------------------------------------------------------------------
+// Rev 4: ENGINE-008 co-mention graph pass
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute directed co-mention edges from shared entities in factsByCluster.
+ * Two signals with ≥1 shared entity get a `similar_to` edge weighted by overlap.
+ * When factsByCluster is empty (rev-2 aggregator), returns [].
+ */
+function computeGraphLinks(
+  global: Top10Entry[],
+  factsByCluster: Record<string, { entities: string[] }[]>,
+): SignalLink[] {
+  const links: SignalLink[] = [];
+
+  for (let i = 0; i < global.length; i++) {
+    for (let j = i + 1; j < global.length; j++) {
+      const a = global[i]!;
+      const b = global[j]!;
+      const factsA = factsByCluster[a.clusterId] ?? [];
+      const factsB = factsByCluster[b.clusterId] ?? [];
+
+      const entitiesA = new Set(factsA.flatMap((f) => f.entities));
+      const entitiesB = new Set(factsB.flatMap((f) => f.entities));
+      if (entitiesA.size === 0 || entitiesB.size === 0) continue;
+
+      const shared = [...entitiesA].filter((e) => entitiesB.has(e));
+      if (shared.length === 0) continue;
+
+      const weight = Math.round((shared.length / Math.max(entitiesA.size, entitiesB.size)) * 100) / 100;
+      links.push({
+        a: a.signalId ?? a.clusterId,
+        b: b.signalId ?? b.clusterId,
+        relation: 'similar_to',
+        weight,
+      });
+    }
+  }
+
+  return links;
+}
 
 export interface SelectionOptions {
   /** Entries per topic and for the global board. Default 10. */
@@ -245,6 +381,9 @@ function toEntry(
     references,
     delta: computeDelta({ clusterId: cluster.clusterId, rank }, previousBoard),
     carriedOver: previousIds.has(cluster.clusterId),
+    // Rev 4: stable signal id + story-specific summary (GAP-1, GAP-2)
+    signalId: computeSignalId(cluster.headline),
+    summary: summarizeForDs(cluster.headline, references),
   };
 
   // Rev 3: forward sourceDocIds for the full provenance trail.
@@ -399,12 +538,18 @@ export function selectTop10(
 
   const stability = computeStability(global, previous?.data.global ?? null);
 
+  // Rev 4: ENGINE-008 co-mention graph pass — derive edges from shared entities
+  // in factsByCluster (provided via options.aggregation). Empty when no facts.
+  const factsByCluster = options.aggregation?.data.factsByCluster ?? {};
+  const links = computeGraphLinks(global, factsByCluster);
+
   const data: Top10Data = {
     nextRefreshAt: nextRefreshAt(ranking.cycle),
     topicsCovered: Object.keys(top10ByTopic).sort(),
     top10ByTopic,
     global,
     stability,
+    ...(links.length > 0 ? { links } : {}),
   };
 
   return {
