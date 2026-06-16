@@ -53,6 +53,23 @@ function computeSignalId(headline: string): string {
   return createHash('sha256').update(headline).digest('hex').slice(0, 8);
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"',
+  '&#039;': "'", '&039;': "'", '&apos;': "'", '&nbsp;': ' ',
+};
+
+function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(?:#\d+|#x[\da-f]+|[a-z0-9]+);/gi, (entity): string => {
+    const known = HTML_ENTITIES[entity];
+    if (known !== undefined) return known;
+    const dec = entity.match(/^&#(\d+);$/);
+    if (dec) return String.fromCharCode(parseInt(dec[1]!, 10));
+    const hex = entity.match(/^&#x([\da-f]+);$/i);
+    if (hex) return String.fromCharCode(parseInt(hex[1]!, 16));
+    return entity;
+  });
+}
+
 const STOP_WORDS_SET = new Set([
   'a','an','the','and','or','but','in','on','at','to','for','of','with',
   'is','it','its','as','are','was','by','from','that','this','be','has',
@@ -82,7 +99,7 @@ const VERSION_RE = /v\d+[\d.]*(?:-rc[\d.]*|-alpha[\d.]*|-beta[\d.]*)?/i;
  * SourceRef[] (no EngineFact — those are in the aggregation artifact, not here).
  */
 function summarizeForDs(headline: string, refs: SourceRef[]): string {
-  const h = headline.trim();
+  const h = decodeHtmlEntities(headline).trim();
 
   // Pattern A: Release notes
   const releaseRef = refs.find((r) => /^release notes from\s/i.test(r.source));
